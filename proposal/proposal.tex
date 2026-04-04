@@ -1,0 +1,134 @@
+\documentclass[11pt,letterpaper]{article}
+
+\usepackage[margin=0.9in]{geometry}
+\usepackage{times}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage{natbib}
+\usepackage{xcolor}
+
+\setlength{\parskip}{0.4em}
+\setlength{\parindent}{0pt}
+\setlength{\bibsep}{2pt}
+
+\title{\textbf{Syntax-Grounded Tokenization and Language-Server-Constrained Decoding for Rust Code Generation}}
+
+\author{
+  Leo Wang \\
+  CMSC 25750 --- Machine Learning and Large Language Models \\
+  University of Chicago
+}
+
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+LLMs for code generation provide no hard guarantees on syntactic correctness. Existing constrained decoding methods enforce grammar validity at inference time but are limited by a mismatch between subword tokenizers and language grammars. We propose a two-part approach for Rust: (1) a \emph{syntax-grounded tokenizer} whose vocabulary is rooted in Rust's keywords, operators, and delimiters, ensuring grammar terminals are atomic tokens; and (2) \emph{language-server-constrained decoding} that queries \texttt{rust-analyzer} at each step to mask invalid token continuations. By aligning the tokenizer with the grammar, the language server's completions map directly to token IDs, eliminating the token-boundary problem in prior work. We plan to fine-tune a small code model with this tokenizer and evaluate on Rust benchmarks against unconstrained baselines and existing grammar-guided methods.
+\end{abstract}
+
+\section{Introduction and Motivation}
+
+LLM-based code generation has advanced rapidly, yet even state-of-the-art models produce syntactically invalid programs with non-trivial frequency. Autoregressive LLMs generate code token-by-token from learned distributions, with no formal mechanism ensuring the output conforms to a target grammar. While syntax errors are easy to detect post-hoc, relying on generate-then-fix loops wastes inference budget on programs that were never valid.
+
+A growing body of work explores \emph{constrained decoding}, using a grammar or parser at inference time to mask tokens that would cause syntax violations \citep{willard2023outlines, scholak2021picard, poesia2022synchromesh, ugare2024syncode}. These methods share a common difficulty: modern LLMs use byte-pair encoding (BPE) tokenizers whose vocabulary units do not align with grammar terminals. A single BPE token may span multiple syntax elements, or a grammar terminal may be split across tokens. This misalignment requires complex bookkeeping at the token-grammar boundary \citep{ugare2024syncode}.
+
+We observe that this is fundamentally a \emph{tokenizer design problem}. If every grammar terminal is guaranteed to be an atomic token, the valid-token computation becomes a direct lookup. A language server like \texttt{rust-analyzer}, which computes valid completions using the full context-sensitive grammar and type system, could provide completion sets that map directly to token IDs with no boundary reconciliation.
+
+We investigate this for Rust, chosen because: (1) it has a strict grammar and powerful type system; (2) \texttt{rust-analyzer} is a mature language server with a completion API tolerant of partial programs; and (3) its terminal set is manageable in size.
+
+\section{Related Work}
+
+\textbf{Grammar-guided constrained decoding.}
+\citet{willard2023outlines} propose Outlines, which constrains LLM sampling to a CFG or regex by masking invalid logits at each step. \citet{ugare2024syncode} address the token-grammar alignment problem directly in SYNCODE, introducing a precomputed DFA mask store that maps partial token states to valid token sets. Both methods are limited to context-free approximations---they cannot enforce context-sensitive properties like type correctness or scope rules.
+
+\textbf{Incremental parsing for constrained decoding.}
+\citet{scholak2021picard} propose PICARD, an incremental SQL parser that rejects invalid tokens during autoregressive SQL generation, achieving state-of-the-art on the Spider benchmark. This demonstrates the value of richer-than-CFG validators in the decoding loop, but is SQL-specific and does not address tokenizer alignment.
+
+\textbf{Completion-engine-based generation.}
+\citet{poesia2022synchromesh} propose Synchromesh, using a ``Completion Engine'' to compute valid string continuations, then constraining the LLM to produce only consistent tokens. This is the closest precursor to our work: we similarly compute valid continuations, but use a full language server rather than a hand-written engine, and design the tokenizer so the mapping from completions to tokens is trivial.
+
+\textbf{Syntax-directed neural code generation.}
+\citet{yin2017syntactic} generate code by predicting AST construction actions rather than surface tokens, ensuring syntactic correctness by construction. This does not scale to modern LLM architectures operating over flat token sequences. Our approach recovers some of this structural alignment within the autoregressive framework by designing the vocabulary to respect syntactic structure.
+
+\section{Proposed Approach}
+
+Our approach has two components: a syntax-grounded tokenizer and language-server-constrained decoding.
+
+\subsection{Syntax-Grounded Tokenizer}
+
+We construct a tokenizer for Rust with a two-tier vocabulary:
+
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+  \item \textbf{Syntax tier.} Every Rust keyword (\texttt{fn}, \texttt{let}, \texttt{mut}, \texttt{struct}, \texttt{impl}, etc.), operator (\texttt{+}, \texttt{->}, \texttt{::}, \texttt{=>}, etc.), and delimiter (\texttt{\{}, \texttt{\}}, \texttt{(}, \texttt{)}, \texttt{;}) is a fixed, atomic token, enumerated from the Rust reference grammar (${\sim}$100--150 tokens).
+
+  \item \textbf{Content tier.} Identifiers, literals, string contents, and comments are handled by a BPE sub-vocabulary trained on Rust source code. A pre-tokenization step splits at syntax-element boundaries before BPE merges, ensuring syntax tokens are never absorbed into content tokens.
+\end{enumerate}
+
+The pre-tokenization rules are the key design element: a keyword like \texttt{fn} is always the atomic token \texttt{[fn]}, never merged into a BPE token like \texttt{fn\_main}. We implement this via regex-based pre-tokenization in HuggingFace's \texttt{tokenizers} library.
+
+\subsection{Language-Server-Constrained Decoding}
+
+At each generation step $t$, given the partial program $x_{1:t-1}$:
+
+\begin{enumerate}[leftmargin=*]
+  \item Write $x_{1:t-1}$ to a buffer visible to \texttt{rust-analyzer}.
+  \item Request completions at the cursor position (end of buffer).
+  \item Map the returned completion items to token IDs in our vocabulary. Because syntax elements are atomic tokens, a completion like \texttt{fn} maps to exactly one token ID.
+  \item Construct a binary mask $m \in \{0, 1\}^{|V|}$ over the vocabulary, setting $m_i = 1$ for valid tokens and $m_i = 0$ otherwise.
+  \item Apply the mask to the logit vector before softmax: $p(x_t | x_{1:t-1}) = \text{softmax}(z + \log m)$, where $z$ is the raw logit vector and $\log 0 = -\infty$.
+\end{enumerate}
+
+This is conceptually similar to prior constrained decoding, but the token-grammar alignment is trivial by construction rather than requiring the complex machinery of SYNCODE or Synchromesh.
+
+\textbf{Handling incomplete code.}
+\texttt{rust-analyzer} tolerates incomplete code but its behavior on highly partial programs needs empirical investigation. For positions where the LS returns no completions, we fall back to syntax-tier-only constraints or allow unconstrained generation for a bounded window before re-querying.
+
+\textbf{Latency.}
+LS queries add per-step latency. We prioritize correctness over throughput in this prototype, reporting per-token latency and exploring batched querying (every $k$ tokens) in our analysis.
+
+\section{Evaluation Plan}
+
+We will evaluate on the following dimensions:
+
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item \textbf{Syntactic validity rate}: fraction of generated programs that parse without syntax errors.
+  \item \textbf{Functional correctness}: pass@$k$ on HumanEval-Rust and MultiPL-E Rust benchmarks.
+  \item \textbf{Baselines}: (a) same model, unconstrained; (b) SYNCODE-style CFG constraints; (c) unconstrained with compiler-feedback retry, controlling for total compute.
+  \item \textbf{Latency}: wall-clock time per program, decomposed into model inference vs.\ LS query time.
+  \item \textbf{Ablations}: tokenizer-only (no LS), LS with standard BPE, and the full combined system.
+\end{itemize}
+
+\section{Timeline}
+
+The project spans 7 weeks. Below is our planned schedule.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}cp{5.2in}@{}}
+\toprule
+\textbf{Week} & \textbf{Tasks} \\
+\midrule
+1 & Enumerate Rust grammar terminals from the reference. Design two-tier vocabulary structure. Implement pre-tokenization rules. Begin prototyping \texttt{rust-analyzer} integration to understand its completion API behavior on partial programs. \\
+2 & Complete tokenizer implementation using HuggingFace \texttt{tokenizers}. Train BPE content-tier on a Rust corpus (e.g., The Stack, filtered for Rust). Validate tokenizer round-trip correctness on held-out code. \\
+3 & Set up fine-tuning infrastructure. Begin fine-tuning a small code model (targeting CodeGen-350M or StarCoder-1B) with the new tokenizer on Rust code. \\
+4 & Complete fine-tuning. Implement language-server-constrained decoding loop: buffer management, completion querying, token masking. \\
+5 & Integrate constrained decoding with the fine-tuned model. Implement SYNCODE baseline for comparison. Run initial evaluation on HumanEval-Rust. \\
+6 & Full evaluation: all baselines, ablations, latency measurements. Error analysis of failure cases. \\
+7 & Write final report. Prepare code and artifacts for reproducibility. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Risk mitigation.}
+The highest-risk component is the \texttt{rust-analyzer} integration (Weeks 1 and 4). We front-load prototyping in Week 1 specifically to identify issues early. If the language server proves unreliable on partial code, we will fall back to a simpler incremental parser (similar to PICARD) that uses Rust's grammar but not its type system, which would still benefit from the aligned tokenizer.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}
