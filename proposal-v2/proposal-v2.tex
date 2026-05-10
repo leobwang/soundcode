@@ -1,0 +1,181 @@
+\documentclass[11pt,letterpaper]{article}
+
+\usepackage[margin=0.9in]{geometry}
+\usepackage{times}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{amsmath,amssymb}
+\usepackage{natbib}
+\usepackage{xcolor}
+
+\setlength{\parskip}{0.4em}
+\setlength{\parindent}{0pt}
+\setlength{\bibsep}{2pt}
+
+\title{\textbf{Speculative Code Generation with Asynchronous\\Semantic Verification and Rollback}}
+
+\author{
+  Leo Wang \\
+  CMSC 25750 --- Machine Learning and Large Language Models \\
+  University of Chicago
+}
+
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Autoregressive code LLMs generate tokens left-to-right with no mechanism to detect errors until generation is complete. Existing constrained-decoding methods either mask invalid tokens going forward (SynCode, MGD) or operate only on syntax (IterGen), leaving a gap: once a semantically invalid token is emitted, subsequent tokens cascade from it. We propose an inference-time system that runs \texttt{rust-analyzer} asynchronously alongside generation, checkpoints the KV cache at statement boundaries, and rolls back to the last valid checkpoint when the language server reports type errors, unresolved names, or borrow-checker violations---injecting the diagnostic into context so the model can regenerate with knowledge of what went wrong. We target Rust, where compile-time checks are strictest and LLM error rates are highest. We evaluate on MultiPL-E Rust and a repository-level Rust completion benchmark, measuring compilation rate, pass@$k$, and cascading error rate against unconstrained generation, MGD, SynCode, and generate-then-fix baselines.
+\end{abstract}
+
+\section{Introduction}
+
+LLM-based code generation has advanced rapidly, yet models still produce code that fails to compile at non-trivial rates, especially in statically typed languages. For Rust, pass@1 on HumanEval is roughly 20--30 percentage points below Python for equivalent models \citep{cassano2023multiple}, largely due to the borrow checker, lifetime annotations, and trait system.
+
+A growing body of work on \emph{constrained decoding} addresses this by masking invalid tokens at each generation step \citep{willard2023outlines,ugare2024syncode,poesia2022synchromesh}. These methods enforce context-free grammar constraints but cannot check context-sensitive properties like type correctness or scope rules. Monitor-Guided Decoding \citep[MGD;][]{agrawal2023mgd} goes further by querying a language server at trigger points (e.g., after the \texttt{.} operator) to mask type-inconsistent identifiers. However, MGD has two fundamental limitations: (1) it intervenes only at sparse trigger points, not comprehensively, and (2) it \emph{cannot roll back}---if the model generates an invalid token between trigger points, the error propagates through all subsequent tokens.
+
+Recent work on rollback during generation addresses the undo problem but not the verification source. DSVD \citep{guo2025dsvd} uses internal probing heads to detect hallucinations and truncates the KV cache to roll back, but relies on the model's own hidden states rather than external semantic analysis, and has not been applied to code. IterGen \citep{park2025itergen} provides grammar-symbol-level backtracking with user-programmed semantic checks, but its checks are shallow (schema validation, email matching) and not driven by a full language server.
+
+We observe that these three capabilities---external semantic verification, token-level rollback, and error-informed regeneration---have never been combined. We propose to fill this gap with a system that runs \texttt{rust-analyzer} asynchronously alongside autoregressive generation, checkpoints the KV cache at statement boundaries, and rolls back when the language server detects errors, injecting the diagnostic into context for the retry. We target Rust because: (1) its compile-time checks (types, borrow checker, lifetimes, trait bounds) are the strictest of any mainstream language, giving the verifier the most to catch; (2) \texttt{rust-analyzer} has the fastest incremental analysis of any language server (10--50ms for native diagnostics via the salsa query framework); and (3) LLMs make the most errors in Rust, providing the largest room for improvement.
+
+\section{Related Work}
+
+\textbf{Constrained decoding.}
+Outlines \citep{willard2023outlines} and SynCode \citep{ugare2024syncode} enforce CFG constraints via token masking with formal soundness guarantees. Synchromesh \citep{poesia2022synchromesh} extends this to semantic constraints via hand-written Completion Engines. All are forward-only: they mask future tokens but cannot undo past errors. The Type-Constrained approach of \citet{mundler2025typeconstrained} enforces type-system rules during decoding for TypeScript via prefix automata, reducing compilation errors by 75\%, but covers only a subset of TypeScript and has no rollback.
+
+\textbf{Monitoring during generation.}
+MGD \citep{agrawal2023mgd} is the closest prior work. It defines \emph{monitors}---stateful interfaces between the LM and a language server---that query static analysis at trigger points and mask type-inconsistent tokens. On Java, MGD improves compilation rate by 18--25\% and lets a 1.1B model outperform a 175B model. However, MGD fires only at trigger points (e.g., after~\texttt{.}), cannot prevent errors between triggers, and has no rollback. The authors identify ``backtracking and beam-search'' as explicit future work.
+
+\textbf{Rollback during generation.}
+DSVD \citep{guo2025dsvd} trains probing heads on the LM's hidden states to detect hallucinations, triggering KV-cache rollback with ${\sim}$5--20\% latency overhead. IterGen \citep{park2025itergen} provides \texttt{forward}/\texttt{backward}/\texttt{view} primitives for grammar-symbol-level navigation with KV-cache truncation, improving SQL accuracy by 18\% over SynCode. Neither uses an external semantic oracle: DSVD relies on internal model signals; IterGen requires the user to manually program each semantic check.
+
+\textbf{Iterative repair.}
+Self-Debugging \citep{chen2024selfdebugging}, Reflexion \citep{shinn2023reflexion}, and LATS \citep{zhou2024lats} improve code via generate-then-fix loops, achieving up to 92.7\% pass@1 on HumanEval. All operate at the full-program level---they generate a complete program, evaluate it, then retry or branch---wasting computation on tokens generated after the first error.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{System} & \textbf{External semantic} & \textbf{Rollback} & \textbf{Error-informed} \\
+ & \textbf{verifier} & & \textbf{regeneration} \\
+\midrule
+SynCode / Outlines & \texttimes & \texttimes & \texttimes \\
+MGD & \checkmark\,(LSP) & \texttimes & \texttimes \\
+DSVD & \texttimes\,(internal) & \checkmark & \texttimes \\
+IterGen & \texttimes\,(manual) & \checkmark & \texttimes \\
+\textbf{This work} & \checkmark\,(LSP) & \checkmark & \checkmark \\
+\bottomrule
+\end{tabular}
+\caption{Positioning. No existing system combines all three capabilities.}
+\label{tab:positioning}
+\end{table}
+
+\section{Proposed Approach}
+
+\subsection{System Overview}
+
+The system wraps any autoregressive code LLM with an external verification loop. Generation proceeds token-by-token as usual. At \emph{checkpoint boundaries} (end of statement, detected by \texttt{;} or \texttt{\}} in the token stream), the system snapshots the KV-cache state and submits the partial program to \texttt{rust-analyzer} for analysis. If the language server reports errors in the newly generated code, the system rolls back to the last clean checkpoint, injects the diagnostic into context, and regenerates. Otherwise, it advances the checkpoint and continues.
+
+The key design choice is \emph{asynchronous verification}: the model continues generating while the language server analyzes. This amortizes LSP latency across multiple tokens. Two event timelines are possible:
+
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+  \item \textbf{Accept:} Verification completes and finds no errors. The checkpoint advances. No interruption.
+  \item \textbf{Reject:} Verification finds errors. All tokens generated after the checkpoint are discarded, the KV cache is truncated, the diagnostic is injected, and generation resumes from the checkpoint.
+\end{enumerate}
+
+\subsection{Two-Tier Verification}
+
+\texttt{rust-analyzer} provides two diagnostic paths with different speed/coverage tradeoffs:
+
+\textbf{Tier 1: Native diagnostics (10--50ms).} rust-analyzer's built-in checks run without invoking \texttt{rustc}. They catch unresolved names, type mismatches, wrong argument counts, missing struct fields, and missing match arms. They do \emph{not} catch borrow-checker violations or complex lifetime errors. These run at every checkpoint boundary.
+
+\textbf{Tier 2: \texttt{cargo check} diagnostics (2--30s).} Invokes the full \texttt{rustc} frontend, catching everything including borrow-checker violations and lifetime errors. Too slow for per-statement use. We run this periodically (e.g., per function) or in the background, triggering coarser-grained rollback (to the function boundary) when errors are found.
+
+This two-tier design maps naturally onto the asynchronous model: fast/shallow checks trigger immediate rollback at statement granularity; slow/deep checks run concurrently and trigger deferred rollback at coarser granularity.
+
+\subsection{Rollback Mechanism}
+
+On a reject event at checkpoint $t_0$, with the model currently at token position $t > t_0$:
+
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+  \item \textbf{KV-cache truncation.} Discard KV-cache entries for positions $t_0+1$ through $t$. This is O(1)---a pointer adjustment, not recomputation. The remaining entries are valid because autoregressive KV entries at position $i$ depend only on positions $\leq i$.
+  \item \textbf{Diagnostic injection.} Append the language server's error message to the context as a code comment: \texttt{// Error: expected \`String\`, found \`\&str\` on line 5}. This gives the model information it did not have on the first attempt.
+  \item \textbf{Recurrence penalty.} Following IterGen, multiply the score of each previously generated (and rolled-back) token by $(1-\gamma)^\alpha$, where $\gamma = 0.7$ is the penalty strength and $\alpha$ is the number of times that token has been rolled back. This discourages regenerating the same invalid output.
+  \item \textbf{Regeneration.} Resume autoregressive generation from position $t_0$ with the modified context.
+\end{enumerate}
+
+A \emph{patience parameter} $P$ limits the number of consecutive rollbacks at the same checkpoint before the system gives up and generates freely (to avoid infinite loops on positions where the LSP produces only spurious diagnostics on partial code).
+
+\subsection{Optional Forward Masking}
+
+At trigger points (\texttt{.} for member access, function call sites), we optionally query \texttt{textDocument/completion} to obtain type-consistent identifiers and mask invalid tokens, following MGD. This is complementary to rollback: forward masking prevents errors at trigger points; rollback catches errors everywhere else.
+
+\section{Evaluation Plan}
+
+\subsection{Benchmarks}
+
+\textbf{MultiPL-E Rust} \citep{cassano2023multiple}. HumanEval (164 problems) and MBPP (401 problems) translated to Rust with type mappings (\texttt{List}~$\to$~\texttt{Vec}, \texttt{int}~$\to$~\texttt{isize}, etc.). Single-function, self-contained problems. Measures pass@$k$ via unit test execution. Serves as the primary functional-correctness benchmark.
+
+\textbf{Repository-level Rust completion benchmark} (to construct). Following MGD's PRAGMATICCODE methodology, we will curate Rust repositories from GitHub/crates.io that \texttt{cargo check} successfully, extract method-completion prompts at points involving cross-crate types and trait implementations, and measure compilation rate and identifier match. This targets the multi-statement, cross-file scenario where cascading errors and LSP verification matter most.
+
+\subsection{Baselines}
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+  \item Unconstrained autoregressive generation.
+  \item MGD (LSP-constrained at trigger points, no rollback).
+  \item SynCode (CFG-only constraints).
+  \item Generate-then-fix loop (\texttt{cargo check}, get errors, retry entire program) at equal total compute budget.
+\end{enumerate}
+
+\subsection{Models}
+
+We target smaller open-source code models where error rates are highest and the benefit of constrained decoding is largest: Qwen2.5-Coder-1.5B, StarCoder2-3B, CodeLlama-7B. IterGen showed that constrained decoding has the most dramatic impact on small models (e.g., Qwen2.5-0.5B-Instruct: 2.3\%~$\to$~26.0\% accuracy on SQL).
+
+\subsection{Metrics}
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item \textbf{Compilation rate:} fraction of generated programs passing \texttt{cargo check}.
+  \item \textbf{pass@$k$:} functional correctness via unit tests (MultiPL-E).
+  \item \textbf{Cascading error rate:} for each rollback event, also generate \emph{without} rollback on a separate branch and count subsequent errors. Measures the value of early intervention.
+  \item \textbf{Tokens wasted:} total tokens generated minus tokens in final output.
+  \item \textbf{Wall-clock time:} end-to-end latency, decomposed into model inference vs.\ LSP query time.
+\end{itemize}
+
+\subsection{Ablations}
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+  \item Rollback only (no forward masking).
+  \item Forward masking only (no rollback; MGD-style).
+  \item Full system (rollback + forward masking).
+  \item Rollback without diagnostic injection (truncate and retry blindly).
+\end{enumerate}
+Ablation (4) isolates the value of error-informed regeneration: does telling the model \emph{why} it failed help, or is re-sampling sufficient?
+
+\section{Timeline}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}cp{5.0in}@{}}
+\toprule
+\textbf{Week} & \textbf{Tasks} \\
+\midrule
+1 & Prototype \texttt{rust-analyzer} integration: headless LSP client, diagnostic querying on partial programs, latency profiling. Identify failure modes on incomplete code. \\
+2 & Implement KV-cache checkpointing and rollback. Test on a small model with synthetic partial programs. Verify O(1) truncation and correct regeneration. \\
+3 & Implement diagnostic injection and recurrence penalty. Integrate with the decoding loop. End-to-end test on a handful of HumanEval-Rust problems. \\
+4 & Implement MGD-style forward masking at trigger points. Begin constructing Rust repository-level evaluation dataset (scrape repos, extract prompts). \\
+5 & Full evaluation on MultiPL-E Rust. Implement baselines (unconstrained, SynCode, generate-then-fix). \\
+6 & Ablation experiments. Cascading error analysis. Latency measurements. Repository-level benchmark evaluation. \\
+7 & Write final report. Package code and artifacts for reproducibility. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Risk mitigation.}
+The highest-risk component is \texttt{rust-analyzer}'s behavior on partial code (Week~1). We front-load this to identify issues early. If native diagnostics are too noisy on incomplete statements, we restrict checkpoints to syntactically complete blocks (after~\texttt{\}}) and rely on Tier~2 (\texttt{cargo check}) for finer-grained verification. If \texttt{cargo check} latency is prohibitive, we fall back to native diagnostics only, accepting reduced coverage of borrow-checker errors.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}
