@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rollback Generator Demo</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header id="topbar">
+  <div class="title">Rollback Generator — Live Demo</div>
+  <div id="status" class="status idle" aria-live="polite">idle</div>
+</header>
+
+<section id="controls">
+  <div class="control-group">
+    <label for="prompt-select">Sample prompt
+      <select id="prompt-order" aria-label="Sort order" class="inline-select">
+        <option value="id">by id</option>
+        <option value="length">by length (hardest first)</option>
+      </select>
+    </label>
+    <select id="prompt-select" aria-label="Sample prompt">
+      <option value="">— loading samples —</option>
+    </select>
+  </div>
+
+  <div class="control-group">
+    <label for="verifier-select">Verifier</label>
+    <select id="verifier-select" aria-label="Verifier">
+      <option value="cargo" selected>cargo check (fast, ~300 ms/call)</option>
+      <option value="ra">rust-analyzer (heavy, ~1-3 s/call)</option>
+    </select>
+  </div>
+
+  <div class="control-group">
+    <label for="model-select">Model</label>
+    <select id="model-select" aria-label="Model (Ollama)">
+      <optgroup label="Micro (0–15B)">
+        <option value="nemotron-3-nano:4b">nemotron-3-nano:4b (fast)</option>
+        <option value="qwen3.5:9b">qwen3.5:9b</option>
+      </optgroup>
+      <optgroup label="Small (15–50B)">
+        <option value="gpt-oss:20b">gpt-oss:20b</option>
+        <option value="mistral-small3.2:24b">mistral-small3.2:24b</option>
+        <option value="devstral-small-2:latest">devstral-small-2 (24B, coder)</option>
+        <option value="gemma3:27b">gemma3:27b</option>
+        <option value="nemotron-cascade-2:30b">nemotron-cascade-2:30b</option>
+        <option value="qwen2.5-coder:32b">qwen2.5-coder:32b (coder)</option>
+        <option value="qwen3.5:35b">qwen3.5:35b</option>
+        <option value="qwen3.6:35b">qwen3.6:35b</option>
+      </optgroup>
+      <optgroup label="Medium (50–150B)">
+        <option value="deepseek-r1:70b">deepseek-r1:70b</option>
+        <option value="gpt-oss:120b">gpt-oss:120b</option>
+        <option value="nemotron-3-super:120b">nemotron-3-super:120b</option>
+        <option value="qwen3.5:122b" selected>qwen3.5:122b</option>
+        <option value="devstral-2:latest">devstral-2 (125B, coder)</option>
+      </optgroup>
+    </select>
+  </div>
+
+  <div class="control-group">
+    <label for="cadence">Token cadence</label>
+    <input type="range" id="cadence" min="0" max="500" step="10" value="0">
+    <span id="cadence-label">real-time</span>
+  </div>
+
+  <div class="control-group">
+    <label><input type="checkbox" id="instruct" checked> instruct on rollback</label>
+  </div>
+
+  <div class="control-group buttons">
+    <button id="start-btn" class="primary">Start</button>
+    <button id="stop-btn">Stop</button>
+    <button id="reset-btn">Reset</button>
+  </div>
+</section>
+
+<section id="prompt-editor-section">
+  <label for="prompt-editor">Prompt (editable)</label>
+  <textarea id="prompt-editor" rows="6" spellcheck="false"></textarea>
+</section>
+
+<section id="pipeline-pane" aria-label="Event pipeline">
+  <div class="pipeline-block" id="pipe-llm-block">
+    <div class="pipeline-block-label">LLM</div>
+  </div>
+  <div class="pipeline-block" id="pipe-code-block">
+    <div class="pipeline-block-label">CODE</div>
+  </div>
+  <div class="pipeline-block" id="pipe-lsp-block">
+    <div class="pipeline-block-label">LSP</div>
+  </div>
+  <svg id="pipe-svg" aria-hidden="true">
+    <defs>
+      <marker id="pipe-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#aab0c0"/>
+      </marker>
+    </defs>
+  </svg>
+  <div class="pipeline-track" id="pipeline-track" aria-hidden="true"></div>
+</section>
+
+<main id="grid">
+  <div class="panel" id="llm-panel">
+    <div class="panel-header">LLM</div>
+    <div id="llm-body" class="panel-body">
+      <div class="model-readout">
+        <div class="label">current</div>
+        <div id="model-readout-name">—</div>
+      </div>
+      <div class="latest-token-stack" id="llm-stack" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="code-panel">
+    <div class="panel-header">
+      Code so far
+      <span id="code-preview-label" class="preview-label">▸ hover preview</span>
+    </div>
+    <pre id="code-body" class="panel-body code"></pre>
+    <pre id="code-preview" class="panel-body code"></pre>
+    <div class="counter-row">
+      <span class="counter"><span class="label">rollbacks</span> <span id="rollback-counter">0</span></span>
+      <span class="counter"><span class="label">checkpoints</span> <span id="checkpoint-counter">1</span></span>
+      <span class="counter"><span class="label">tokens</span> <span id="token-counter">0</span></span>
+    </div>
+  </div>
+
+  <div class="panel" id="lsp-panel">
+    <div class="panel-header">LSP / verifier log</div>
+    <div id="lsp-body" class="panel-body lsp-log" aria-live="polite"></div>
+  </div>
+</main>
+
+<footer id="legend">
+  <span class="legend-chip chip-inactive">inactive</span>
+  <span class="legend-chip chip-ok">ok</span>
+  <span class="legend-chip chip-error">error</span>
+  <span class="spacer"></span>
+  <span class="legend-text" id="ws-status">disconnected</span>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "LSP-guided speculative decoding with semantic rollback for code generation"
 requires-python = ">=3.12"
 dependencies = [
+    "aiohttp>=3.13.5",
     "datasets>=4.8.4",
     "httpx>=0.28.1",
     "lsp-client>=0.3.9",
@@ -16,8 +17,10 @@ dev = [
     "matplotlib>=3.10.8",
     "nbformat>=5.10.4",
     "pandas>=3.0.2",
+    "playwright>=1.59.0",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",
+    "pytest-playwright>=0.7.2",
     "scipy>=1.17.1",
 ]
 

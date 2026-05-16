@@ -1,0 +1,322 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #f6f7fb; color: #1d1f25;
+  display: flex; flex-direction: column;
+  height: 100vh;
+}
+
+/* ─── top bar ───────────────────────────────────── */
+#topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px;
+  background: #1d1f25; color: #fff;
+  border-bottom: 1px solid #0e0f12;
+  flex: 0 0 auto;
+}
+.title { font-weight: 600; font-size: 15px; }
+.status {
+  font-size: 12px; padding: 4px 10px; border-radius: 999px;
+  background: #2c2f37; color: #ccd0d8;
+}
+.status.loading { background: #b78f1a; color: #fff; }
+.status.ready   { background: #2e7d32; color: #fff; }
+.status.generating { background: #1976d2; color: #fff; }
+.status.done    { background: #455a64; color: #fff; }
+.status.error   { background: #c62828; color: #fff; }
+
+/* ─── controls ──────────────────────────────────── */
+#controls {
+  display: flex; flex-wrap: wrap; gap: 10px 16px;
+  padding: 10px 16px;
+  background: #fff; border-bottom: 1px solid #e2e4ea;
+  flex: 0 0 auto;
+}
+.control-group {
+  display: flex; flex-direction: column; gap: 4px;
+  font-size: 12px;
+}
+.control-group label { color: #5b6172; font-weight: 500; }
+.inline-select {
+  font-size: 10px; padding: 1px 3px; margin-left: 6px;
+  border-radius: 4px; border: 1px solid #ced1da; background: #fff;
+  vertical-align: middle;
+}
+.control-group.buttons { flex-direction: row; align-items: end; }
+select, input[type="number"], input[type="range"], textarea {
+  font-family: inherit; font-size: 13px;
+  border: 1px solid #ced1da; border-radius: 6px;
+  padding: 4px 6px;
+}
+input[type="range"] { width: 160px; padding: 0; }
+button {
+  font-family: inherit; font-size: 13px;
+  border: 1px solid #ced1da; border-radius: 6px;
+  padding: 6px 14px; background: #fff; cursor: pointer;
+  transition: background 0.1s ease;
+}
+button:hover { background: #f0f1f5; }
+button.primary { background: #1976d2; color: #fff; border-color: #1976d2; }
+button.primary:hover { background: #1565c0; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+#prompt-editor-section {
+  padding: 8px 16px; background: #fff;
+  border-bottom: 1px solid #e2e4ea;
+  display: flex; flex-direction: column; gap: 4px;
+  flex: 0 0 auto;
+}
+#prompt-editor-section label { font-size: 12px; color: #5b6172; font-weight: 500; }
+#prompt-editor {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  resize: vertical;
+  min-height: 60px;
+}
+
+/* ─── main grid ─────────────────────────────────── */
+#grid {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  padding: 10px 16px;
+  min-height: 0;
+}
+
+.panel {
+  background: #fff; border: 1px solid #e2e4ea; border-radius: 8px;
+  display: flex; flex-direction: column;
+  min-height: 0;
+}
+.panel-header {
+  padding: 6px 12px; font-size: 12px; font-weight: 600;
+  background: #f0f1f5; border-bottom: 1px solid #e2e4ea;
+  border-top-left-radius: 8px; border-top-right-radius: 8px;
+  color: #3a3f4b;
+}
+.panel-body {
+  flex: 1 1 auto;
+  padding: 10px; overflow: auto;
+  font-size: 12px;
+}
+.panel-body.code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap; word-break: break-word;
+  background: #fafbfd;
+  margin: 0;
+}
+
+/* ─── LLM panel ────────────────────────────────── */
+.model-readout {
+  font-size: 11px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #eef0f4;
+  margin-bottom: 6px;
+}
+.model-readout .label {
+  color: #8a909c; text-transform: uppercase; letter-spacing: 0.05em;
+}
+.model-readout > div:last-child {
+  font-family: ui-monospace, monospace;
+  color: #1d1f25; font-weight: 500;
+}
+.latest-token-stack {
+  display: flex; flex-direction: column; gap: 4px;
+  min-height: 100px; max-height: 100%;
+}
+.latest-token-stack .token-pill {
+  font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.4;
+  padding: 4px 10px; border-radius: 999px;
+  background: #ffffff; color: #2c3142; align-self: flex-start;
+  border: 1px solid #d6dceb;
+  animation: tok-pop 0.2s ease;
+  min-height: 22px; box-sizing: border-box;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  cursor: default;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease,
+              outline 0.1s ease;
+}
+.latest-token-stack .token-pill.tok-ok {
+  background: #c8e6c9; border-color: #2e7d32; color: #1b5e20;
+}
+.latest-token-stack .token-pill.tok-error {
+  background: #ffcdd2; border-color: #c62828; color: #b71c1c;
+}
+.latest-token-stack .token-pill.token-pill-ws {
+  color: #8a909c;  /* whitespace tokens dimmed so real-content pills stand out */
+}
+/* Cross-panel hover highlight (driven by JS).
+   Applied to .tok in code, .token-pill in LLM, and .lsp-entry in LSP. */
+.tok-hover,
+.token-pill.tok-hover,
+.lsp-entry.tok-hover {
+  outline: 2px solid #1976d2 !important;
+  outline-offset: 1px;
+  background: #e3f2fd !important;
+}
+@keyframes tok-pop {
+  0% { opacity: 0; transform: scale(0.7) translateY(-4px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* ─── pipeline pane (LLM → CODE → LSP with capsules) ─────────────── */
+#pipeline-pane {
+  position: relative;
+  margin: 8px 16px 0;
+  padding: 14px 40px;
+  background: #f9fafd; border: 1px solid #e2e4ea; border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 100px;
+  overflow: hidden;
+}
+.pipeline-block {
+  position: relative; z-index: 2;
+  flex: 0 0 100px;
+  display: flex; align-items: center; justify-content: center;
+  width: 100px; height: 60px;
+  background: #ffffff; border: 2px solid #1976d2; border-radius: 8px;
+  font-weight: 600; color: #1976d2;
+  letter-spacing: 0.05em; font-size: 14px;
+}
+.pipeline-block-label { user-select: none; }
+#pipe-svg {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none; z-index: 1;
+}
+.pipeline-track {
+  position: absolute; inset: 0;
+  pointer-events: none; z-index: 3;
+}
+/* A capsule animating between two pipeline blocks. */
+.pipe-capsule {
+  position: absolute;
+  font-family: ui-monospace, monospace; font-size: 11px;
+  padding: 3px 10px; border-radius: 999px;
+  background: #fff; color: #2c3142;
+  border: 1px solid #b0b7c8;
+  white-space: nowrap; max-width: 200px;
+  overflow: hidden; text-overflow: ellipsis;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  /* JS sets --start-x, --end-x, --top, animation duration. */
+  left: var(--start-x);
+  top: var(--top);
+  animation-name: pipe-fly;
+  animation-duration: var(--dur, 600ms);
+  animation-timing-function: ease-in-out;
+  animation-fill-mode: forwards;
+}
+.pipe-capsule.ok       { border-color: #2e7d32; background: #e8f5e9; color: #1b5e20; }
+.pipe-capsule.error    { border-color: #c62828; background: #ffebee; color: #b71c1c; }
+.pipe-capsule.inactive { border-color: #9e9e9e; background: #f5f5f5; color: #555; }
+.pipe-capsule.rollback { border-color: #d4980f; background: #fdf8e6; color: #8a6309; font-weight: 600; }
+.pipe-capsule.token    { border-color: #1976d2; }
+@keyframes pipe-fly {
+  0%   { left: var(--start-x); opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { left: var(--end-x); opacity: 0; }
+}
+
+/* ─── code panel ────────────────────────────────── */
+#code-body { font-size: 12px; line-height: 1.5; }
+.tok {
+  background: transparent;
+  border-radius: 2px;
+  cursor: default;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.tok.tok-ok    { background: #c8e6c9; color: #1b5e20; }
+.tok.tok-error { background: #ffcdd2; color: #b71c1c; }
+.tok:hover     { outline: 1px solid #1976d2; outline-offset: 0px; }
+
+/* Code-preview overlay (shown when hovering an LSP log entry). */
+#code-panel { position: relative; }
+#code-preview {
+  position: absolute;
+  left: 0; right: 0;
+  top: 32px;            /* sits below the panel header */
+  bottom: 36px;         /* sits above the counter row */
+  background: #fffbe7;  /* warm tint = "looking at the past" */
+  padding: 10px;
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px; line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word;
+  overflow: auto;
+  display: none;
+  z-index: 10;
+}
+#code-preview.active { display: block; }
+.preview-highlight-ok    { background: #c8e6c9; color: #1b5e20; }
+.preview-highlight-error { background: #ffcdd2; color: #b71c1c; }
+.preview-label {
+  float: right; font-size: 11px; font-weight: 500;
+  color: #8a6309; display: none;
+}
+.preview-label.active { display: inline; }
+.lsp-entry { cursor: pointer; }
+.lsp-entry.lsp-entry-pinned {
+  outline: 2px solid #1976d2;
+  background: #e3f2fd !important;
+  font-weight: 500;
+}
+.code-discarded {
+  text-decoration: line-through;
+  color: #b71c1c; opacity: 0.7;
+  animation: fade-out 1s 0.4s ease forwards;
+}
+@keyframes fade-out {
+  to { opacity: 0; max-height: 0; padding: 0; margin: 0; }
+}
+.counter-row {
+  display: flex; gap: 14px; padding: 6px 10px;
+  border-top: 1px solid #e2e4ea; font-size: 11px;
+  background: #f9fafd;
+}
+.counter .label { color: #8a909c; margin-right: 4px; }
+.counter span:not(.label) { font-family: ui-monospace, monospace; font-weight: 600; }
+
+/* ─── LSP panel ────────────────────────────────── */
+.lsp-log { display: flex; flex-direction: column; gap: 6px; }
+.lsp-entry {
+  font-family: ui-monospace, monospace; font-size: 11px;
+  padding: 6px 8px; border-radius: 4px;
+  border-left: 3px solid #ccc;
+  background: #fafbfd;
+  animation: lsp-pop 0.2s ease;
+}
+.lsp-entry.ok       { border-left-color: #2e7d32; background: #f3f9f3; }
+.lsp-entry.error    { border-left-color: #c62828; background: #fcf3f3; }
+.lsp-entry.inactive { border-left-color: #9e9e9e; }
+.lsp-entry.rollback { border-left-color: #d4980f; background: #fdf8e6; }
+.lsp-entry .meta { color: #8a909c; font-size: 10px; }
+.lsp-entry .body { color: #2c3142; margin-top: 2px; white-space: pre-wrap; }
+@keyframes lsp-pop {
+  0% { opacity: 0; transform: translateX(8px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+/* ─── legend ───────────────────────────────────── */
+#legend {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 16px; background: #fff;
+  border-top: 1px solid #e2e4ea;
+  font-size: 11px;
+  flex: 0 0 auto;
+}
+.legend-chip {
+  font-family: ui-monospace, monospace;
+  padding: 2px 8px; border-radius: 999px; border: 1px solid;
+}
+.chip-inactive { border-color: #9e9e9e; background: #f5f5f5; color: #555; }
+.chip-ok       { border-color: #2e7d32; background: #e8f5e9; color: #1b5e20; }
+.chip-error    { border-color: #c62828; background: #ffebee; color: #b71c1c; }
+.spacer { flex: 1 1 auto; }
+.legend-text { color: #8a909c; }
+.legend-text.connected { color: #2e7d32; }
+.legend-text.error     { color: #c62828; }
