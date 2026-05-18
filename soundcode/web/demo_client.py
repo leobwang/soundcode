@@ -16,7 +16,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from soundcode.code import Category, Code, State
-from soundcode.llm import LlmServer
+from soundcode.llm import LlmServer, OrchestrationMode
 
 EmitFn = Callable[[dict], Awaitable[None]]
 
@@ -95,25 +95,124 @@ class DemoClient:
                 await asyncio.gather(*tasks, return_exceptions=True)
             tasks.clear()
             await self.llm.abort_current_stream()
+            await _close_think_if_open()
             new_prompt = prompt + code.content_up_to(survivor_offset) + suffix_msg
             self.llm.set_prompt(new_prompt)
             code.rollback(to_offset=survivor_offset)
             window_hashes.clear()
-            # Snapshot reflects the *pre-rollback* buffer so the UI can
-            # show the discarded state when the entry is clicked.
-            pre_rollback_snapshot = code.content_up_to(survivor_offset) + discarded
+            # Snapshot reflects the *post-rollback* buffer (the surviving
+            # prefix only — discarded slice is excluded). Verdict-error
+            # entries still show the pre-error state at `offset_at_check`;
+            # rollback entries explicitly differ — they show "where we
+            # backed up to", not "what got discarded".
+            post_rollback_snapshot = code.content_up_to(survivor_offset)
             await self.emit({
                 "type": "rollback",
                 "to_offset": survivor_offset,
                 "discarded": discarded,
                 "rollback_count": rollbacks,
                 "reason": reason,
-                "code_snapshot": pre_rollback_snapshot,
+                "code_snapshot": post_rollback_snapshot,
             })
             return rollbacks
 
-        await self.emit({"type": "status", "phase": "generating", "message": "Streaming tokens"})
         await self.emit({"type": "reset_buffer"})
+
+        # ── TWO_PHASE phase 1 ──────────────────────────────────────────
+        # Stream the thinking trace from a chat-template-wrapped raw call,
+        # display it in the LLM pane as kind="think", then bake the trace
+        # into the prompt as a `// reasoning` comment block. The main
+        # producer loop then runs phase 2 (raw code completion) on the
+        # augmented prompt, with the thinking visible to the model as
+        # comment context. Phase 1 is a no-op if the model lacks a known
+        # chat template (e.g., currently any non-Qwen3 family).
+        if self.llm.config.mode == OrchestrationMode.TWO_PHASE:
+            await self.emit({
+                "type": "status", "phase": "generating",
+                "message": "phase 1 of 2: streaming thinking trace",
+            })
+            thinking_chunks: list[str] = []
+            emitted_open = False
+            async for tok in self.llm.stream_thinking_phase(prompt):
+                if not emitted_open:
+                    await self.emit({"type": "token_emitted",
+                                     "kind": "think", "text": "<think>"})
+                    emitted_open = True
+                thinking_chunks.append(tok.text)
+                await self.emit({"type": "token_emitted",
+                                 "kind": "think", "text": tok.text})
+            if emitted_open:
+                await self.emit({"type": "token_emitted",
+                                 "kind": "think", "text": "</think>"})
+            trace = "".join(thinking_chunks).strip()
+            if trace:
+                commented = "\n".join("    // " + line for line in trace.splitlines())
+                augmented = (
+                    prompt
+                    + "\n    // ───── reasoning ─────\n"
+                    + commented
+                    + "\n    // ─────────────────────\n    "
+                )
+                prompt = augmented
+                code.prefix = prompt
+                self.llm.set_prompt(prompt)
+            await self.emit({
+                "type": "status", "phase": "generating",
+                "message": "phase 2 of 2: streaming code",
+            })
+        else:
+            await self.emit({"type": "status", "phase": "generating",
+                             "message": "Streaming tokens"})
+
+        # Track whether we're currently inside a `<think>…</think>` run so we
+        # can synthesise the opening / closing markers exactly once per block.
+        # Boxed in a dict to make it mutable from `_emit_token` below without
+        # the boilerplate of nonlocal in nested async helpers.
+        think_state = {"in_think": False}
+
+        async def _close_think_if_open():
+            """Emit a synthetic `</think>` and clear `in_think`. Called on
+            rollback so a half-emitted thinking block (the LM was mid-thought
+            when we aborted the stream) doesn't bleed into the next attempt's
+            tokens, which would otherwise extend the same `<think>` block."""
+            if think_state["in_think"]:
+                await self.emit({"type": "token_emitted", "kind": "think",
+                                 "text": "</think>"})
+                think_state["in_think"] = False
+
+        async def _emit_token(token):
+            """Route one Token from the LM to the UI, applying token_delay.
+            Returns True iff the token was a code token (= worth running the
+            body_closed / watchdog / boundary checks after). Thinking tokens
+            never advance `code.content`."""
+            if self.config.token_delay_s > 0:
+                await asyncio.sleep(self.config.token_delay_s)
+            if token.kind == "think":
+                if not think_state["in_think"]:
+                    await self.emit({
+                        "type": "token_emitted", "kind": "think",
+                        "text": "<think>",
+                    })
+                    think_state["in_think"] = True
+                await self.emit({
+                    "type": "token_emitted", "kind": "think",
+                    "text": token.text,
+                })
+                return False
+            # code token — close the thinking block first if we were inside one
+            if think_state["in_think"]:
+                await self.emit({
+                    "type": "token_emitted", "kind": "think",
+                    "text": "</think>",
+                })
+                think_state["in_think"] = False
+            code.append(token.text)
+            await self.emit({
+                "type": "token_emitted", "kind": "code",
+                "text": token.text,
+                "offset": len(code.content),
+            })
+            return True
 
         while True:
             elapsed = time.perf_counter() - t0
@@ -128,14 +227,11 @@ class DemoClient:
             if self.llm.has_next():
                 token = await self.llm.next()
                 if token:
-                    if self.config.token_delay_s > 0:
-                        await asyncio.sleep(self.config.token_delay_s)
-                    code.append(token)
-                    await self.emit({
-                        "type": "token_emitted",
-                        "text": token,
-                        "offset": len(code.content),
-                    })
+                    is_code = await _emit_token(token)
+                    if not is_code:
+                        # Thinking token — skip the structural / watchdog /
+                        # boundary checks; they all operate on `code.content`.
+                        continue
                     # Fix #3: structural termination on function-body close.
                     if code.body_closed:
                         for t in tasks:
@@ -247,6 +343,20 @@ class DemoClient:
             # 3. Termination.
             if not self.llm.has_next():
                 if not tasks:
+                    # Surface the C3 think-budget abort so the user knows the
+                    # chat call ran out of headroom and the continuation
+                    # below is the actual code generation pass.
+                    if getattr(self.llm, "think_budget_exceeded", False):
+                        await self.emit({
+                            "type": "status", "phase": "generating",
+                            "message": (
+                                "thinking exceeded budget "
+                                f"({self.llm.config.think_char_budget} chars) — "
+                                "chat stream aborted; falling back to RAW continuation"
+                            ),
+                        })
+                        # Reset so the continuation loop's own EOS doesn't re-emit.
+                        self.llm.think_budget_exceeded = False
                     await self.emit({"type": "status", "phase": "done", "message": "stream complete"})
                     break
                 try:
@@ -280,11 +390,20 @@ class DemoClient:
                     f"(attempt {continuations}/{self.config.max_continuations})"
                 ),
             })
-            # No truncation; just append a "please continue" hint and resume.
-            suffix_msg = (
-                "\n// the function body above is incomplete; "
-                "continue from here and finish the function.\n"
-            )
+            # If we have SOME code, nudge the LM to continue from where it left
+            # off. If the buffer is empty (thinking-mode produced nothing
+            # usable, repetition watchdog wiped it, etc.), the "above is
+            # incomplete" comment misleads the LM into thinking the empty
+            # body IS the answer — and it just emits `}` to close. So in the
+            # empty case, fall back to the original prompt verbatim and let
+            # the LM start fresh.
+            if code.content.strip():
+                suffix_msg = (
+                    "\n// the function body above is incomplete; "
+                    "continue from here and finish the function.\n"
+                )
+            else:
+                suffix_msg = ""
             self.llm.set_prompt(prompt + code.content + suffix_msg)
             await self.emit({
                 "type": "continuation",
@@ -307,20 +426,38 @@ class DemoClient:
     async def _run_stream_phase(self, code, tasks, prompt, window_hashes, t0):
         """The producer-consumer loop body, factored out so it can be re-run
         for continuation attempts after a failed final_check."""
+        think_state = {"in_think": False}
+
+        async def _emit_token(token):
+            if self.config.token_delay_s > 0:
+                await asyncio.sleep(self.config.token_delay_s)
+            if token.kind == "think":
+                if not think_state["in_think"]:
+                    await self.emit({"type": "token_emitted", "kind": "think",
+                                     "text": "<think>"})
+                    think_state["in_think"] = True
+                await self.emit({"type": "token_emitted", "kind": "think",
+                                 "text": token.text})
+                return False
+            if think_state["in_think"]:
+                await self.emit({"type": "token_emitted", "kind": "think",
+                                 "text": "</think>"})
+                think_state["in_think"] = False
+            code.append(token.text)
+            await self.emit({"type": "token_emitted", "kind": "code",
+                             "text": token.text,
+                             "offset": len(code.content)})
+            return True
+
         while True:
             if time.perf_counter() - t0 > self.config.wall_budget_s:
                 return
             if self.llm.has_next():
                 token = await self.llm.next()
                 if token:
-                    if self.config.token_delay_s > 0:
-                        await asyncio.sleep(self.config.token_delay_s)
-                    code.append(token)
-                    await self.emit({
-                        "type": "token_emitted",
-                        "text": token,
-                        "offset": len(code.content),
-                    })
+                    is_code = await _emit_token(token)
+                    if not is_code:
+                        continue
                     if code.body_closed:
                         for t in tasks:
                             t.cancel()

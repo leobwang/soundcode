@@ -93,8 +93,8 @@ def page(browser, server_url):
 
 
 def test_page_loads(page):
-    expect(page).to_have_title("Rollback Generator Demo")
-    expect(page.locator(".title")).to_contain_text("Rollback Generator")
+    expect(page).to_have_title("SoundCode — LSP-supervised LLM code generation")
+    expect(page.locator(".blog-title")).to_contain_text("SoundCode")
     expect(page.locator("#status")).to_be_visible()
 
 
@@ -283,9 +283,11 @@ def test_cross_panel_hover_highlights(page):
 
 
 def test_defaults(page):
-    """Default options: instruct checkbox checked, qwen3.5:122b model, cargo verifier,
-    and the LeetCode 37 problem auto-selected with its prompt in the editor."""
-    expect(page.locator("#instruct")).to_be_checked()
+    """Default options: instruct OFF, TWO_PHASE orchestration, qwen3.5:122b model,
+    cargo verifier, and the LeetCode 37 problem auto-selected with its prompt in
+    the editor."""
+    expect(page.locator("#instruct")).not_to_be_checked()
+    expect(page.locator("#mode-select")).to_have_value("two_phase")
     expect(page.locator("#model-select")).to_have_value("qwen3.5:122b")
     expect(page.locator("#verifier-select")).to_have_value("cargo")
     expect(page.locator("#prompt-select")).to_have_value("LeetCode_37_solve_sudoku")
@@ -424,24 +426,129 @@ def test_pipeline_spawns_capsule_on_token(page):
 
 
 def test_rollback_drops_failed_tokens(page):
-    """After a rollback event, tokens past the checkpoint should be marked
-    discarded and eventually removed."""
+    """After a rollback event:
+      - Code pane: the discarded token gets the `tok-strikedown` animation
+        class IMMEDIATELY, then is removed from the DOM ~1.1s later. The
+        user briefly sees the strike-through before it disappears.
+      - LLM pane: pills past the survivor STAY visible, marked `tok-discarded`
+        (dark red) so the rolled-back history is auditable.
+      - Rollback counter increments.
+    """
     page.evaluate("""
         handleEvent({type: "reset_buffer"});
-        handleEvent({type: "token_emitted", text: "good", offset: 4});
+        handleEvent({type: "token_emitted", kind: "code", text: "good", offset: 4});
         handleEvent({type: "verdict", verdict: "ok", offset: 4, diagnostics: []});
-        handleEvent({type: "token_emitted", text: " bad", offset: 8});
+        handleEvent({type: "token_emitted", kind: "code", text: " bad", offset: 8});
         handleEvent({type: "verdict", verdict: "error", offset: 8,
                      diagnostics: [{category:"blocking", code:"E0", message:"oops"}]});
         handleEvent({type: "rollback", to_offset: 4, discarded: " bad", rollback_count: 1});
     """)
-    # The good token survives.
+    # The good token survives in both panes.
     expect(page.locator(".tok[data-offset='4']")).to_be_visible()
-    # The bad token has the discard class applied (animation drives it offscreen).
-    bad_classes = page.locator(".tok[data-offset='8']").get_attribute("class") or ""
-    assert "code-discarded" in bad_classes
+    expect(page.locator(".token-pill[data-offset='4']")).to_be_visible()
+    # The bad code-span is mid-strikedown immediately after the rollback.
+    bad_span_classes = (
+        page.locator(".tok[data-offset='8']").get_attribute("class") or ""
+    )
+    assert "tok-strikedown" in bad_span_classes, bad_span_classes
+    # Eventually the strikedown animation completes and the span is removed.
+    expect(page.locator(".tok[data-offset='8']")).to_have_count(0, timeout=3000)
+    # The bad LLM pill stays, marked tok-discarded.
+    bad_pill_classes = (
+        page.locator(".token-pill[data-offset='8']").get_attribute("class") or ""
+    )
+    assert "tok-discarded" in bad_pill_classes, bad_pill_classes
     # Rollback counter incremented.
     expect(page.locator("#rollback-counter")).to_have_text("1")
+
+
+def test_thinking_block_anchors_to_next_code_token(page):
+    """A `<think>…</think>` run is anchored to the first code token that
+    follows it. Rolling back to before that code token must mark the whole
+    thinking block discarded; rolling back to AFTER it must leave the block
+    clean.
+    """
+    page.evaluate("""
+        handleEvent({type: "reset_buffer"});
+        // Block 1: think_a → code_a (offset 5)
+        handleEvent({type: "token_emitted", kind: "think", text: "<think>"});
+        handleEvent({type: "token_emitted", kind: "think", text: " plan A "});
+        handleEvent({type: "token_emitted", kind: "think", text: "</think>"});
+        handleEvent({type: "token_emitted", kind: "code",  text: "let x", offset: 5});
+        // Block 2: think_b → code_b (offset 10)
+        handleEvent({type: "token_emitted", kind: "think", text: "<think>"});
+        handleEvent({type: "token_emitted", kind: "think", text: " plan B "});
+        handleEvent({type: "token_emitted", kind: "think", text: "</think>"});
+        handleEvent({type: "token_emitted", kind: "code",  text: " = 1;", offset: 10});
+        // Rollback to 5 → only block 2 + code_b should be marked discarded.
+        handleEvent({type: "rollback", to_offset: 5, discarded: " = 1;",
+                     rollback_count: 1, reason: "cargo_error"});
+    """)
+    # Block 1 (anchor=5) should NOT be discarded (anchor <= to_offset).
+    block1_states = page.evaluate("""
+        () => Array.from(document.querySelectorAll('.tok-think, .tok-think-marker'))
+                   .filter(e => parseInt(e.dataset.anchorOffset, 10) === 5)
+                   .map(e => e.classList.contains('tok-discarded'))
+    """)
+    assert all(s is False for s in block1_states), block1_states
+    assert len(block1_states) == 3, f"expected 3 block-1 tokens, got {len(block1_states)}"
+
+    # Block 2 (anchor=10) SHOULD be discarded.
+    block2_states = page.evaluate("""
+        () => Array.from(document.querySelectorAll('.tok-think, .tok-think-marker'))
+                   .filter(e => parseInt(e.dataset.anchorOffset, 10) === 10)
+                   .map(e => e.classList.contains('tok-discarded'))
+    """)
+    assert all(s is True for s in block2_states), block2_states
+    assert len(block2_states) == 3, f"expected 3 block-2 tokens, got {len(block2_states)}"
+
+
+def test_unanchored_thinking_is_preserved_on_rollback(page):
+    """Thinking tokens that have not yet anchored to a code token (LM is
+    still mid-thought) must survive any rollback — they may belong to a
+    code token still to come."""
+    page.evaluate("""
+        handleEvent({type: "reset_buffer"});
+        handleEvent({type: "token_emitted", kind: "code",  text: "ok;", offset: 3});
+        handleEvent({type: "token_emitted", kind: "code",  text: " bad;", offset: 8});
+        // Mid-thought (no code follows yet) — these pills have no anchor.
+        handleEvent({type: "token_emitted", kind: "think", text: "<think>"});
+        handleEvent({type: "token_emitted", kind: "think", text: " mid "});
+        handleEvent({type: "rollback", to_offset: 3, discarded: " bad;",
+                     rollback_count: 1, reason: "cargo_error"});
+    """)
+    # No tok-discarded on the unanchored thinking pills.
+    unanchored_discarded = page.evaluate("""
+        () => Array.from(document.querySelectorAll('.tok-think, .tok-think-marker'))
+                   .filter(e => e.dataset.anchorOffset == null)
+                   .some(e => e.classList.contains('tok-discarded'))
+    """)
+    assert unanchored_discarded is False
+
+
+def test_rollback_entry_click_shows_post_rollback_snapshot(page):
+    """Clicking a rollback log entry should preview the POST-rollback survivor,
+    not the pre-rollback (= surviving prefix + discarded suffix) state. The
+    snapshot the server sends for rollback events is now `content_up_to(survivor)`."""
+    page.evaluate("""
+        handleEvent({type: "reset_buffer"});
+        handleEvent({type: "token_emitted", kind: "code", text: "good;", offset: 5});
+        handleEvent({type: "token_emitted", kind: "code", text: " bad;", offset: 10});
+        // Server emits the POST-rollback snapshot ("good;" only).
+        handleEvent({type: "rollback", to_offset: 5, discarded: " bad;",
+                     rollback_count: 1, reason: "cargo_error",
+                     code_snapshot: "good;"});
+    """)
+    # The rollback log entry must carry the post-rollback snapshot as its
+    # _codeSnapshot. Click it and verify the preview reflects "good;" only.
+    has_correct_snapshot = page.evaluate("""
+        () => {
+          const entries = document.querySelectorAll('.lsp-entry.rollback');
+          if (!entries.length) return null;
+          return entries[entries.length - 1]._codeSnapshot;
+        }
+    """)
+    assert has_correct_snapshot == "good;", has_correct_snapshot
 
 
 @pytest.mark.skipif(

@@ -3,16 +3,38 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Rollback Generator Demo</title>
-<link rel="stylesheet" href="/static/style.css">
+<title>SoundCode — LSP-supervised LLM code generation</title>
+<link rel="stylesheet" href="/static/style.css?v=20260517-rhombus">
 </head>
 <body>
 
-<header id="topbar">
-  <div class="title">Rollback Generator — Live Demo</div>
-  <div id="status" class="status idle" aria-live="polite">idle</div>
+<header id="blog-header">
+  <h1 class="blog-title">SoundCode</h1>
+  <div class="blog-subtitle">LSP-supervised LLM code generation</div>
+  <div class="blog-meta">
+    Leo Wang · UChicago CMSC&nbsp;25750 · week&nbsp;5 ·
+    <a href="https://soundcode-demo.psixyzt.com">soundcode-demo.psixyzt.com</a>
+  </div>
 </header>
 
+<section id="blog-section-demo">
+  <p class="abstract">
+    LLMs don't understand the logic behind the code they write. A
+    <em>judge</em> with knowledge of the programming language can help LLMs
+    generate correct code. We introduce <b>SoundCode</b>, an orchestration
+    framework that uses Language Server Protocol (LSP) tooling to inspect
+    the code in real time, in parallel, at structural checkpoints while the
+    LLM generates. If the code passes the check, the judge stays out of the
+    way; if an error is found, the judge strikes down the code segment back
+    to the last checkpoint and forces a restart from there.
+  </p>
+</section>
+
+<div id="demo-controls-bar">
+  <div id="status" class="status idle" aria-live="polite">idle</div>
+</div>
+
+<div id="settings-prompt-row">
 <section id="controls">
   <div class="control-group">
     <label for="prompt-select">Sample prompt
@@ -68,7 +90,20 @@
   </div>
 
   <div class="control-group">
-    <label><input type="checkbox" id="instruct" checked> instruct on rollback</label>
+    <label><input type="checkbox" id="instruct"> instruct on rollback</label>
+  </div>
+
+  <div class="control-group">
+    <label for="mode-select">Orchestration</label>
+    <select id="mode-select" aria-label="Orchestration mode">
+      <option value="raw">raw — no thinking (R0)</option>
+      <option value="raw_think_inject">raw + &lt;think&gt; injection (R1)</option>
+      <option value="two_phase" selected>two-phase: think → code (T2)</option>
+      <option value="chat_instructed">chat + code-only instruction (C3)</option>
+    </select>
+    <div id="mode-hint" class="control-hint">
+      R1/T2/C3 require a reasoning model; silently fall back to RAW otherwise.
+    </div>
   </div>
 
   <div class="control-group buttons">
@@ -82,6 +117,7 @@
   <label for="prompt-editor">Prompt (editable)</label>
   <textarea id="prompt-editor" rows="6" spellcheck="false"></textarea>
 </section>
+</div><!-- /#settings-prompt-row -->
 
 <section id="pipeline-pane" aria-label="Event pipeline">
   <div class="pipeline-block" id="pipe-llm-block">
@@ -143,6 +179,394 @@
   <span class="legend-text" id="ws-status">disconnected</span>
 </footer>
 
-<script src="/static/app.js"></script>
+<section class="blog-section" id="blog-section-intro">
+  <h2>How it works</h2>
+
+  <h3>Code-generation framework</h3>
+  <p>
+    Three modules call each other in a short loop. <b>LlmServer</b>
+    produces tokens; <b>Code</b> appends each one and decides at every
+    boundary whether to ask <b>LSP</b> to check; on a <code>BLOCKING</code>
+    verdict the rollback path resets both <b>Code</b> and
+    <b>LlmServer</b> to the last surviving checkpoint and the loop
+    replays. The animation below walks through one full cycle —
+    successful checkpoint, then a failing one with strikedown + restart.
+  </p>
+
+  <!-- ── animated walkthrough: tokens → ckpt → verdict → strikedown ── -->
+  <div class="anim-flow-stage" aria-hidden="true">
+    <svg viewBox="0 0 1000 400" class="anim-flow-svg"
+         preserveAspectRatio="xMidYMid meet">
+      <!-- static tracks (faint lines between blocks) -->
+      <path class="anim-track" d="M280,85 L400,85"/>
+      <path class="anim-track" d="M600,85 L720,85"/>
+
+      <!-- LLM block -->
+      <g id="anim-llm" class="anim-mod">
+        <rect x="80"  y="40" width="200" height="90" rx="12"/>
+        <text x="180" y="92">LLM</text>
+      </g>
+      <!-- Code block -->
+      <g id="anim-code" class="anim-mod">
+        <rect x="400" y="40" width="200" height="90" rx="12"/>
+        <text x="500" y="92">Code</text>
+      </g>
+      <!-- LSP block -->
+      <g id="anim-lsp" class="anim-mod">
+        <rect x="720" y="40" width="200" height="90" rx="12"/>
+        <text x="820" y="92">LSP</text>
+      </g>
+
+      <!-- ── Tower (Code buffer growing) ── -->
+      <text class="anim-tower-title" x="500" y="178">Code</text>
+      <line class="anim-tower-sep" x1="430" y1="190" x2="570" y2="190"/>
+      <g id="anim-slot-0" class="anim-slot">
+        <rect x="420" y="206" width="160" height="28" rx="4"/>
+        <text x="500" y="225">Code[0]</text>
+      </g>
+      <g id="anim-slot-1" class="anim-slot">
+        <rect x="420" y="240" width="160" height="28" rx="4"/>
+        <text x="500" y="259">Code[1]</text>
+      </g>
+      <g id="anim-slot-2" class="anim-slot">
+        <rect x="420" y="274" width="160" height="28" rx="4"/>
+        <text x="500" y="293">Code[2]</text>
+      </g>
+    </svg>
+    <!-- HTML overlay for animated capsules + ephemeral labels -->
+    <div id="anim-overlay" class="anim-overlay"></div>
+  </div>
+  <svg class="flow-diagram-svg flow-diagram-vertical" viewBox="0 0 900 880" role="img"
+       aria-labelledby="flow-diagram-title flow-diagram-desc"
+       preserveAspectRatio="xMidYMid meet">
+    <title id="flow-diagram-title">SoundCode code-generation framework</title>
+    <desc id="flow-diagram-desc">Vertical flowchart with three module rectangles (LLM, Code, LSP), two decision rhombuses (at_ckpt? and has_error?), and two action ellipses (.strikedown(ckpt) and .startover(ckpt)). All arrows are right-angle.</desc>
+    <defs>
+      <marker id="flow-head" viewBox="0 0 10 10" refX="9" refY="5"
+              markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" class="fl-head"/>
+      </marker>
+      <marker id="flow-head-warn" viewBox="0 0 10 10" refX="9" refY="5"
+              markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" class="fl-warn-head"/>
+      </marker>
+      <marker id="flow-head-faint" viewBox="0 0 10 10" refX="9" refY="5"
+              markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" class="fl-faint-head"/>
+      </marker>
+    </defs>
+
+    <!-- LLM rectangle -->
+    <g class="fb">
+      <rect x="340" y="30" width="220" height="80" rx="12"/>
+      <text class="fb-title" x="450" y="68">LLM</text>
+      <text class="fb-sub"   x="450" y="92">soundcode/llm.py</text>
+    </g>
+
+    <!-- LLM &#x2192; Code (token) -->
+    <path class="fl" d="M450,110 L450,215" marker-end="url(#flow-head)"/>
+    <text class="lbl lbl-meth" x="462" y="170" text-anchor="start">(token)</text>
+
+    <!-- Code rectangle -->
+    <g class="fb fb-center">
+      <rect x="340" y="215" width="220" height="80" rx="12"/>
+      <text class="fb-title" x="450" y="253">Code</text>
+      <text class="fb-sub"   x="450" y="277">soundcode/code.py</text>
+    </g>
+
+    <!-- Code &#x2192; at_ckpt rhombus -->
+    <path class="fl" d="M450,295 L450,350" marker-end="url(#flow-head)"/>
+
+    <!-- at_ckpt rhombus -->
+    <g class="fb fb-diamond">
+      <polygon points="450,350 540,385 450,420 360,385"/>
+      <text class="fb-pred" x="450" y="390">at_ckpt()?</text>
+    </g>
+
+    <!-- at_ckpt no &#x2192; do nothing (faint right) -->
+    <path class="fl fl-faint" d="M540,385 L680,385" marker-end="url(#flow-head-faint)"/>
+    <text class="lbl lbl-no lbl-faint" x="610" y="377" text-anchor="middle">no</text>
+    <text class="lbl lbl-faint" x="745" y="378" text-anchor="middle">do</text>
+    <text class="lbl lbl-faint" x="745" y="392" text-anchor="middle">nothing</text>
+
+    <!-- at_ckpt yes &#x2192; LSP -->
+    <path class="fl" d="M450,420 L450,505" marker-end="url(#flow-head)"/>
+    <text class="lbl lbl-yes" x="462" y="465" text-anchor="start">yes</text>
+
+    <!-- LSP rectangle -->
+    <g class="fb">
+      <rect x="340" y="505" width="220" height="80" rx="12"/>
+      <text class="fb-title" x="450" y="543">LSP</text>
+      <text class="fb-sub"   x="450" y="567">cargo_check.py / ra_check.py</text>
+    </g>
+
+    <!-- LSP &#x2192; has_error rhombus -->
+    <path class="fl" d="M450,585 L450,620" marker-end="url(#flow-head)"/>
+
+    <!-- has_error rhombus -->
+    <g class="fb fb-diamond">
+      <polygon points="450,620 540,660 450,700 360,660"/>
+      <text class="fb-pred" x="450" y="665">has_error()?</text>
+    </g>
+
+    <!-- has_error no &#x2192; do nothing -->
+    <path class="fl fl-faint" d="M540,660 L680,660" marker-end="url(#flow-head-faint)"/>
+    <text class="lbl lbl-no lbl-faint" x="610" y="652" text-anchor="middle">no</text>
+    <text class="lbl lbl-faint" x="745" y="653" text-anchor="middle">do</text>
+    <text class="lbl lbl-faint" x="745" y="667" text-anchor="middle">nothing</text>
+
+    <!-- has_error yes &#x2192; split into two branches at y=735 -->
+    <path class="fl fl-warn" d="M450,700 L450,735"/>
+    <text class="lbl lbl-yes lbl-warn" x="462" y="722" text-anchor="start">yes</text>
+    <!-- left branch &#x2192; strikedown ellipse (square corner) -->
+    <path class="fl fl-warn" d="M450,735 L200,735 L200,755" marker-end="url(#flow-head-warn)"/>
+    <!-- right branch &#x2192; startover ellipse (square corner) -->
+    <path class="fl fl-warn" d="M450,735 L700,735 L700,755" marker-end="url(#flow-head-warn)"/>
+
+    <!-- .strikedown(ckpt) ellipse -->
+    <g class="fb fb-ellipse">
+      <ellipse cx="200" cy="790" rx="110" ry="35"/>
+      <text class="fb-action" x="200" y="795">.strikedown(ckpt)</text>
+    </g>
+
+    <!-- .startover(ckpt) ellipse -->
+    <g class="fb fb-ellipse">
+      <ellipse cx="700" cy="790" rx="110" ry="35"/>
+      <text class="fb-action" x="700" y="795">.startover(ckpt)</text>
+    </g>
+
+    <!-- strikedown &#x2192; Code (right-angle loop via LEFT channel) -->
+    <path class="fl fl-warn" d="M90,790 L40,790 L40,255 L340,255" marker-end="url(#flow-head-warn)"/>
+
+    <!-- startover &#x2192; LLM (right-angle loop via RIGHT channel) -->
+    <path class="fl fl-warn" d="M810,790 L860,790 L860,70 L560,70" marker-end="url(#flow-head-warn)"/>
+  </svg>
+
+  <h3>What triggers a strikedown</h3>
+  <p>
+    Every diagnostic cargo (or rust-analyzer) emits is sorted into one of
+    three categories by <code>Code._classify</code>
+    in&nbsp;<code>soundcode/code.py</code>. Only the first triggers a rollback;
+    the other two stay silent and let the producer loop continue.
+  </p>
+  <table class="blog-table">
+    <thead>
+      <tr><th>Category</th><th>Triggers strikedown?</th><th>Examples</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>BLOCKING</b></td>
+        <td>✅ yes — rollback fires</td>
+        <td>
+          E0308 mismatched types · E0425 cannot find function · E0061 wrong
+          number of arguments · E0277 trait bound not satisfied · "expected X,
+          found Y" type errors · any cargo error not flagged as INCOMPLETE
+          below
+        </td>
+      </tr>
+      <tr>
+        <td><b>INCOMPLETE</b></td>
+        <td>❌ silent — buffer is mid-edit, not broken</td>
+        <td>
+          syntax-error · E0601 main not found · E0282/E0283/E0284/E0698 type
+          annotations needed (inference can't proceed yet) · messages
+          containing "expected", "unterminated", "unclosed", "missing
+          trailing", "unexpected eof"
+        </td>
+      </tr>
+      <tr>
+        <td><b>NON_BLOCKING</b></td>
+        <td>❌ silent — warning, not an error</td>
+        <td>unused_variables · dead_code · clippy lints</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    The classifier is deliberately conservative on INCOMPLETE — it treats
+    partial code as a "wait for more tokens" signal rather than a failure
+    signal, because aborting on every transient parse error would prevent
+    the model from ever finishing a statement.
+  </p>
+
+  <h3>Why LeetCode 37 (Sudoku Solver) is the default prompt</h3>
+  <p>
+    The signature <code>fn solve_sudoku(board: &amp;mut Vec&lt;Vec&lt;char&gt;&gt;)</code>
+    is short but a working body is ~1.5 KB of Rust — long enough to cross
+    many checkpoints and actually exercise rollback. It also reliably trips
+    the failure modes the pipeline cares about: <i>E0308</i> char-vs-int
+    mismatches, <i>E0594</i> on the mutable borrow, and <i>E0434</i> when
+    the model tries nested <code>fn</code> helpers that close over locals.
+    The full LeetCode prompt (~1.7 KB with constraints and an example board)
+    is itself a decent stress test for context handling on larger models.
+  </p>
+</section>
+
+<section class="blog-section" id="blog-section-modes">
+  <h2>Four modes of thinking separation</h2>
+  <p>
+    Reasoning models (Qwen&nbsp;3.x, gpt-oss, deepseek-r1, nemotron) can be
+    coaxed into emitting a chain-of-thought trace before producing code.
+    There's no single right way to do it — every approach trades off
+    <em>latency</em>, <em>boundary reliability</em>, and
+    <em>rollback compatibility</em> differently. SoundCode supports four;
+    you can switch live from the <b>Orchestration</b> dropdown above.
+  </p>
+
+  <div class="mode-grid">
+    <div class="mode-card mode-r0">
+      <div class="mode-tag">R0</div>
+      <h3>raw — no thinking</h3>
+      <p>Bare prompt to <code>/api/generate</code> with <code>raw:&nbsp;true</code>.
+      Single call. The model just continues the prompt literally; no thinking
+      trace appears. Always works on every model in the dropdown.</p>
+      <ul class="mode-traits">
+        <li><b>Latency</b> 1× call</li>
+        <li><b>Thinking</b> none</li>
+        <li><b>Rollback</b> standard literal-continuation</li>
+        <li><b>Reliability</b> always</li>
+      </ul>
+    </div>
+
+    <div class="mode-card mode-r1">
+      <div class="mode-tag">R1</div>
+      <h3>raw + &lt;think&gt; injection</h3>
+      <p>Append <code>&lt;think&gt;\n</code> to the outgoing prompt.
+      Parse the stream for a literal <code>&lt;/think&gt;</code> tag or a
+      markdown fence as the think→code boundary. After the boundary,
+      <code>PostBoundaryStripper</code> detects and strips any redeclared
+      signature so only the function body reaches the code buffer.</p>
+      <ul class="mode-traits">
+        <li><b>Latency</b> 1× call</li>
+        <li><b>Thinking</b> visible (when the model closes the tag)</li>
+        <li><b>Rollback</b> one-shot then raw</li>
+        <li><b>Reliability</b> per-model — qwen3.5:9b yes, 122b no</li>
+      </ul>
+    </div>
+
+    <div class="mode-card mode-t2">
+      <div class="mode-tag">T2 <span class="recommended">default</span></div>
+      <h3>two-phase: think → code</h3>
+      <p>Phase&nbsp;1: a separate chat-template-wrapped call with
+      <code>stop=["&lt;/think&gt;"]</code> harvests a reliable thinking trace.
+      Phase&nbsp;2: bake the trace into the prompt as a Rust-comment block,
+      then run the existing raw producer-consumer loop. Thinking actually
+      conditions the code that follows; rollback works unchanged because
+      phase&nbsp;2 is plain raw mode.</p>
+      <ul class="mode-traits">
+        <li><b>Latency</b> 2× calls (one extra cold-start)</li>
+        <li><b>Thinking</b> reliable separator (cleanly stops at <code>&lt;/think&gt;</code>)</li>
+        <li><b>Rollback</b> standard (phase 2 is literal raw)</li>
+        <li><b>Reliability</b> gold path</li>
+      </ul>
+    </div>
+
+    <div class="mode-card mode-c3">
+      <div class="mode-tag">C3</div>
+      <h3>chat + code-only instruction</h3>
+      <p><code>/api/chat</code> with <code>think:&nbsp;true</code> plus a system
+      prompt forbidding markdown, preamble, and the closing brace. Ollama
+      splits <code>thinking</code> and <code>content</code> fields per chunk
+      server-side. <code>ChatBodyStripper</code> brace-matches the
+      <code>content</code> to extract only the body — the model still
+      re-declares the signature.</p>
+      <ul class="mode-traits">
+        <li><b>Latency</b> 1× call</li>
+        <li><b>Thinking</b> reliable (Ollama splits the channels)</li>
+        <li><b>Rollback</b> one-shot then raw</li>
+        <li><b>Reliability</b> high; large models overthink → <code>think_char_budget</code></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="blog-section" id="blog-section-findings">
+  <h2>Findings from this session</h2>
+  <ol>
+    <li>
+      <b>Boundary-based checkpointing peels rollbacks one statement at a time.</b>
+      The original policy ("checkpoint only at cargo-verified positions") caused
+      rollbacks to leap back many lines. The new policy ("checkpoint at every
+      <code>;</code> and <code>}</code> boundary in the buffer, regardless of
+      verification") lets a failing run retreat by ~one statement per rollback.
+      It only works because <code>_ckpt_scan_floor</code> is&nbsp;<i>non-monotonic</i>:
+      it resets to the current rollback target rather than tracking the
+      historical max — otherwise regenerated content past a lower target gets
+      its new boundaries silently swallowed.
+    </li>
+    <li>
+      <b>Empty bodies pass cargo but aren't solutions.</b>
+      A completion that produces no code (the prompt-echo trap fires and
+      rolls everything back to offset 0) used to be returned as "complete"
+      because <code>fn solve_sudoku(…) { }</code> compiles fine.
+      <code>_is_body_trivially_empty</code> now classifies whitespace + Rust
+      comments as empty, and the continuation path skips the misleading
+      "above is incomplete" comment when content is empty (otherwise the
+      model emits just <code>}</code> and closes the empty function).
+    </li>
+    <li>
+      <b>The right rollback target is "largest ckpt strictly less than
+      offset_at_check".</b> Picking <code>ckpt[-1]</code> can land at or
+      past the failing slice, causing a tight retry loop on the same offset.
+      The retry must also <i>remove</i> the survivor from <code>ckpt</code> —
+      otherwise re-emitting an identical boundary in the next attempt
+      re-establishes the same target and the loop never makes progress.
+      Real-LLM run on qwen3.5:9b sudoku went from 588 rollbacks-to-same-offset
+      to monotonic progress.
+    </li>
+    <li>
+      <b>Four orchestration modes, three live, one decorative.</b>
+      R0 (raw) is the baseline. R1 (<code>&lt;think&gt;</code> injection in raw)
+      works on qwen3.5:9b but fails on qwen3.5:122b — the 122B model dumps
+      code inside <code>&lt;think&gt;</code> without ever closing the tag.
+      T2 (two-phase: chat-template-wrapped thinking → raw continuation with
+      thinking baked in as a comment block) is the gold path. C3 (chat +
+      "output code only" system prompt) gives reliable thinking but the
+      model still re-declares the function signature, so a brace-matched
+      body extractor (<code>ChatBodyStripper</code>) salvages just the
+      function body.
+    </li>
+    <li>
+      <b>Thinking-mode reliability is template-level, not prompt-level.</b>
+      Reasoning models emit <code>&lt;think&gt;…&lt;/think&gt;</code> because
+      they were trained on assistant-turn chat templates that inject those
+      tokens. In raw mode (which the rollback pipeline needs for literal
+      prompt continuation), no in-prompt directive reliably gets the model
+      to close <code>&lt;/think&gt;</code>. Confirmed by direct probe:
+      <code>raw=true&nbsp;+&nbsp;think=true</code> on qwen3.5:9b is bit-identical to
+      <code>raw=true</code> alone — same <code>eval_count</code>, same
+      <code>eval_duration</code>, same output. The
+      <code>think</code> flag is a placebo under raw mode.
+    </li>
+    <li>
+      <b>Large reasoning models overthink in C3 and need a wall.</b>
+      qwen3.5:122b in CHAT_INSTRUCTED mode emitted 22,950 chars of thinking
+      on the sudoku prompt and never produced a single <code>content</code>
+      chunk — the chat call effectively never returns. A
+      <code>think_char_budget</code> (default 8000 chars ≈ 2500 tokens)
+      aborts the chat stream when exceeded; the run then falls through to
+      the RAW continuation path, which produces actual code.
+    </li>
+    <li>
+      <b>R1's post-<code>&lt;/think&gt;</code> content needs cleaning.</b>
+      After the model closes thinking, it often emits chat-style output: a
+      markdown fence <code>```rust</code> followed by a re-declared function
+      signature. <code>PostBoundaryStripper</code> detects this within the
+      first&nbsp;~40 non-whitespace bytes — if a fence or <code>fn&nbsp;</code> is
+      present, it delegates to <code>ChatBodyStripper</code> to extract only
+      the body bytes; if not, it passes the clean continuation through.
+    </li>
+  </ol>
+</section>
+
+<footer class="blog-footer">
+  <div class="blog-meta">
+    Source: <a href="https://github.com/leobwang/soundcode"
+                style="color:inherit;text-decoration:underline">github.com/leobwang/soundcode</a>
+    (private). Live demo behind a Cloudflare Tunnel.
+  </div>
+</footer>
+
+<script src="/static/app.js?v=20260517-rhombus"></script>
+<script src="/static/flow-anim.js?v=20260517-rhombus"></script>
 </body>
 </html>

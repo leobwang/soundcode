@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 
+from soundcode.llm import GenerationConfig, OrchestrationMode, Token
 from soundcode.web.demo_client import DemoClient, DemoConfig
 
 
@@ -28,6 +29,10 @@ class FakeLlm:
         self._exhausted = False
         self._prompt = ""
         self._set_prompt_count = 0
+        # `DemoClient` reads `llm.config.mode` to decide whether to run
+        # TWO_PHASE phase 1 before the main loop. The fake LM doesn't have a
+        # real config; default to RAW so the dispatch is a no-op.
+        self.config = GenerationConfig(mode=OrchestrationMode.RAW)
 
     def set_prompt(self, prompt: str) -> None:
         self._prompt = prompt
@@ -48,14 +53,16 @@ class FakeLlm:
     def has_next(self) -> bool:
         return not self._exhausted
 
-    async def next(self) -> str:
+    async def next(self) -> Token:
         toks = self._all_token_lists[self._idx]
         if self._pos >= len(toks):
             self._exhausted = True
-            return ""
+            return Token("", "code")
         t = toks[self._pos]
         self._pos += 1
-        return t
+        # Each fake entry may be a bare str (= code token) or a Token already
+        # (= explicit thinking / code). Coerce so test cases can mix.
+        return t if isinstance(t, Token) else Token(t, "code")
 
     async def abort_current_stream(self) -> None:
         self._exhausted = True
@@ -287,6 +294,221 @@ def test_is_body_trivially_empty_recognises_whitespace_and_comments():
     assert not fn("let x = 1;")
     assert not fn("    // explanatory\n    return 1;\n")
     assert not fn('let s = "// not a comment";')
+
+
+@pytest.mark.skipif(
+    pytest.importorskip("os").environ.get("RUN_REAL_LLM") != "1",
+    reason="Set RUN_REAL_LLM=1 to run the real-LLM per-mode integration test",
+)
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", [
+    OrchestrationMode.RAW,
+    OrchestrationMode.RAW_THINK_INJECT,
+    OrchestrationMode.TWO_PHASE,
+    OrchestrationMode.CHAT_INSTRUCTED,
+])
+async def test_real_llm_per_mode(mode):
+    """Drive DemoClient against qwen3.5:9b in every orchestration mode.
+
+    Assertions per mode:
+    - All modes: generation terminates within wall budget, final content is
+      non-trivial (≥10 chars of actual code).
+    - RAW: zero `kind="think"` tokens emit.
+    - R1/T2/C3: at least one `kind="think"` token emits AND the run produces
+      code (kind="code" tokens > 0).
+    """
+    import time
+    from pathlib import Path
+    from soundcode.cargo_check import CargoChecker
+    from soundcode.llm import LlmServer, GenerationConfig
+
+    # Set up the same workspace pattern the server uses.
+    ws_root = Path("/tmp") / f"soundcode_test_ws_{mode.value}"
+    ws_root.mkdir(parents=True, exist_ok=True)
+    (ws_root / "Cargo.toml").write_text(
+        '[package]\nname = "scratch"\nversion = "0.1.0"\nedition = "2021"\n\n'
+        '[[bin]]\nname = "scratch"\npath = "src/main.rs"\n'
+    )
+    (ws_root / "src").mkdir(parents=True, exist_ok=True)
+    (ws_root / "src" / "main.rs").write_text("fn main() {}\n")
+
+    checker = CargoChecker(workspace=ws_root)
+    # CHAT_INSTRUCTED and RAW_THINK_INJECT need looser stops because the
+    # model may re-declare the function with `\nfn `.
+    if mode in (OrchestrationMode.CHAT_INSTRUCTED, OrchestrationMode.RAW_THINK_INJECT):
+        stop = ["\n}\n\n//"]
+    else:
+        stop = ["\n}", "\nfn ", "\npub fn ", "\nimpl ", "\n}\n\n//"]
+    llm = LlmServer(
+        model="qwen3.5:9b",
+        config=GenerationConfig(max_tokens=-1, stop=stop, mode=mode),
+    )
+    await llm.warmup()
+    events: list[dict] = []
+    demo = DemoClient(
+        llm=llm, checker=checker,
+        config=DemoConfig(
+            instruct_on_rollback=False, wall_budget_s=180.0,
+            token_delay_s=0, repetition_window=60, max_continuations=2,
+        ),
+        emit=lambda ev: events.append(ev) or asyncio.sleep(0),
+    )
+    prompt = (
+        "/// Add two integers.\n"
+        "fn add(a: i32, b: i32) -> i32 {"
+    )
+    t0 = time.perf_counter()
+    final = await demo.generate(prompt)
+    elapsed = time.perf_counter() - t0
+    await llm.close()
+
+    think_tokens = [e for e in events
+                    if e["type"] == "token_emitted" and e.get("kind") == "think"]
+    code_tokens  = [e for e in events
+                    if e["type"] == "token_emitted" and e.get("kind") == "code"]
+    print(f"\n[{mode.value}] elapsed={elapsed:.1f}s "
+          f"think={len(think_tokens)} code={len(code_tokens)} "
+          f"final_len={len(final)}")
+
+    # All modes: must terminate (events have a final) and produce code.
+    assert any(e["type"] == "final" for e in events), \
+        f"[{mode.value}] no final event; events: {[e['type'] for e in events[-10:]]}"
+    assert len(code_tokens) > 0, f"[{mode.value}] zero code tokens emitted"
+
+    if mode == OrchestrationMode.RAW:
+        assert len(think_tokens) == 0, \
+            f"[{mode.value}] expected zero think tokens, got {len(think_tokens)}"
+    else:
+        # R1/T2/C3 should produce at least SOME thinking content on qwen3.5:9b.
+        assert len(think_tokens) > 0, \
+            f"[{mode.value}] expected think tokens, got zero"
+
+
+@pytest.mark.asyncio
+async def test_two_phase_dispatch_runs_phase1_then_phase2():
+    """TWO_PHASE: DemoClient must call `llm.stream_thinking_phase(prompt)`
+    before the main producer loop, emit each yielded token as kind="think",
+    inject the trace as a comment block, and only then start the code phase."""
+    thinking_chunks = ["the model ", "thinks ", "for a bit"]
+
+    class FakeLlmWithThinkingPhase(FakeLlm):
+        async def stream_thinking_phase(self, prompt):
+            for ch in thinking_chunks:
+                yield Token(ch, "think")
+
+    llm = FakeLlmWithThinkingPhase(["    let x = 1;\n", "\n}"])
+    llm.config.mode = OrchestrationMode.TWO_PHASE
+    captured_prompts: list[str] = []
+    orig_set_prompt = llm.set_prompt
+
+    def capture_set_prompt(p):
+        captured_prompts.append(p)
+        orig_set_prompt(p)
+    llm.set_prompt = capture_set_prompt
+
+    events: list[dict] = []
+    demo = DemoClient(
+        llm=llm, checker=FakeChecker(),
+        config=DemoConfig(token_delay_s=0, repetition_window=0,
+                          wall_budget_s=5, max_continuations=0),
+        emit=lambda ev: events.append(ev) or asyncio.sleep(0),
+    )
+    await demo.generate("fn f() {")
+
+    # Phase 1 status appears once.
+    statuses = [e.get("message","") for e in events if e["type"] == "status"]
+    assert any("phase 1" in m for m in statuses), statuses
+    assert any("phase 2" in m for m in statuses), statuses
+
+    # Synthetic <think> / </think> markers wrap the thinking trace.
+    think_texts = [e["text"] for e in events
+                   if e["type"] == "token_emitted" and e.get("kind") == "think"]
+    assert "<think>" in think_texts
+    assert "</think>" in think_texts
+    for ch in thinking_chunks:
+        assert ch in think_texts
+
+    # After phase 1, the prompt was rewritten to include the comment block.
+    rewritten = captured_prompts[-1]
+    assert "// ───── reasoning ─────" in rewritten
+    assert "// the model" in rewritten
+
+
+@pytest.mark.asyncio
+async def test_raw_mode_skips_phase1():
+    """RAW: DemoClient must NOT call stream_thinking_phase and must NOT emit
+    any think tokens — only code tokens flow."""
+    class WatchfulFakeLlm(FakeLlm):
+        def __init__(self, tokens):
+            super().__init__(tokens)
+            self.phase1_calls = 0
+        async def stream_thinking_phase(self, prompt):
+            self.phase1_calls += 1
+            if False:
+                yield   # make this a generator without yielding anything
+
+    llm = WatchfulFakeLlm(["    let x = 1;\n", "\n}"])
+    llm.config.mode = OrchestrationMode.RAW
+    events: list[dict] = []
+    demo = DemoClient(
+        llm=llm, checker=FakeChecker(),
+        config=DemoConfig(token_delay_s=0, repetition_window=0,
+                          wall_budget_s=5, max_continuations=0),
+        emit=lambda ev: events.append(ev) or asyncio.sleep(0),
+    )
+    await demo.generate("fn f() {")
+    assert llm.phase1_calls == 0
+    think_count = sum(1 for e in events
+                      if e["type"] == "token_emitted" and e.get("kind") == "think")
+    assert think_count == 0
+
+
+@pytest.mark.asyncio
+async def test_continuation_after_empty_content_skips_misleading_hint():
+    """When the first stream produces no code (e.g., thinking-mode dumped
+    everything inside `<think>` and the splitter never saw a boundary, so
+    `code.content` is empty by the time final_check runs), the continuation
+    must NOT append the "the function body above is incomplete; continue
+    from here" comment. With empty content the comment lands right after
+    the function's opening `{` and the LM frequently interprets it as the
+    function's body, then emits just `}` to close.
+    """
+    # Sequence:
+    #   1) First stream emits nothing (LM EOS immediately) → empty content.
+    #   2) Final check fires, body is empty → is_complete=False, continuation
+    #      attempt 1 begins. The fix routes the empty case through the
+    #      original prompt without the misleading hint.
+    #   3) Continuation stream emits one body token + `\n}` → body closes.
+    llm = FakeLlm([])
+    llm.add_attempt(["    let x = 1;\n", "}"])
+    captured_prompts: list[str] = []
+
+    class CapturingLlm(FakeLlm):
+        def set_prompt(self, prompt: str) -> None:
+            captured_prompts.append(prompt)
+            super().set_prompt(prompt)
+
+    llm2 = CapturingLlm([])
+    llm2.add_attempt(["    let x = 1;\n", "}"])
+    events: list[dict] = []
+    demo = DemoClient(
+        llm=llm2, checker=FakeChecker(),
+        config=DemoConfig(token_delay_s=0, repetition_window=0,
+                          wall_budget_s=5, max_continuations=2),
+        emit=lambda ev: events.append(ev) or asyncio.sleep(0),
+    )
+    await demo.generate("fn f() {")
+    # Final check must have fired at least once + a continuation must have run.
+    assert any(e["type"] == "continuation" for e in events), \
+        [e["type"] for e in events]
+    # The prompt passed to the continuation stream must NOT contain the
+    # misleading "above is incomplete" comment when content is empty.
+    cont_prompt = captured_prompts[-1]
+    assert "above is incomplete" not in cont_prompt, cont_prompt
+    # The continuation stream did produce actual code (`let x = 1;`).
+    emitted = [e["text"] for e in events
+               if e["type"] == "token_emitted" and e.get("kind", "code") == "code"]
+    assert "    let x = 1;\n" in emitted, emitted
 
 
 @pytest.mark.asyncio

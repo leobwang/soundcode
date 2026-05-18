@@ -175,17 +175,49 @@ async def ws_handler(request):
     return ws
 
 
+REASONING_MODELS = frozenset({
+    "qwen3.5:9b", "qwen3.5:35b", "qwen3.5:122b",
+    "qwen3.6:35b", "qwen3.6:latest",
+    "gpt-oss:20b", "gpt-oss:120b",
+    "deepseek-r1:70b",
+    "nemotron-cascade-2:30b",
+    "nemotron-3-super:120b",
+    "nemotron-3-nano:4b",
+})
+
+
 async def _run_generation(req: dict, emit) -> None:
     import time, uuid, datetime
+    from soundcode.llm import OrchestrationMode, template_for_model
     try:
         prompt = req["prompt"]
         verifier = req.get("verifier", "cargo")
         model = req.get("model", "mistral-small3.2:24b")
         token_delay_ms = int(req.get("token_delay_ms", 0))
         instruct = bool(req.get("instruct", False))
+        mode_req = req.get("mode")
+        # Backward compat: pre-mode clients sent `thinking: true` which maps
+        # to RAW_THINK_INJECT.
+        if mode_req is None:
+            mode_req = ("raw_think_inject"
+                        if bool(req.get("thinking", False))
+                        else "raw")
+        try:
+            mode_requested = OrchestrationMode(mode_req)
+        except ValueError:
+            mode_requested = OrchestrationMode.RAW
     except Exception as e:
         await emit({"type": "error", "message": f"bad start request: {e!r}"})
         return
+
+    # Coerce R1/T2/C3 → RAW for non-reasoning models. R1 silently no-ops on a
+    # non-reasoning model anyway; T2/C3 would crash or thrash. TWO_PHASE
+    # additionally requires a chat template — fall back to RAW if none.
+    mode_active = mode_requested
+    if mode_requested != OrchestrationMode.RAW and model not in REASONING_MODELS:
+        mode_active = OrchestrationMode.RAW
+    if mode_active == OrchestrationMode.TWO_PHASE and template_for_model(model) is None:
+        mode_active = OrchestrationMode.RAW
 
     # Open a per-run JSONL log so the entire event stream can be replayed
     # post-hoc for diagnosis.
@@ -214,6 +246,8 @@ async def _run_generation(req: dict, emit) -> None:
             "model": model,
             "token_delay_ms": token_delay_ms,
             "instruct": instruct,
+            "mode_requested": mode_requested.value,
+            "mode_active": mode_active.value,
         },
     })
 
@@ -245,11 +279,20 @@ async def _run_generation(req: dict, emit) -> None:
     #   `\npub fn `  — column-0 start of a new public fn
     #   `\nimpl `    — column-0 start of an impl block
     #   `\n}\n\n//`  — closing brace followed by a blank-line comment
+    # `RAW_THINK_INJECT` and `CHAT_INSTRUCTED` need looser stop patterns —
+    # the model often emits a `\nfn ` (re-declared signature) just after the
+    # boundary, which would prematurely terminate generation under the default
+    # stop list. Drop the function-start patterns for those modes.
+    if mode_active in (OrchestrationMode.RAW_THINK_INJECT, OrchestrationMode.CHAT_INSTRUCTED):
+        stop_patterns = ["\n}\n\n//"]
+    else:
+        stop_patterns = ["\n}", "\nfn ", "\npub fn ", "\nimpl ", "\n}\n\n//"]
     llm = LlmServer(
         model=model,
         config=GenerationConfig(
             max_tokens=-1,
-            stop=["\n}", "\nfn ", "\npub fn ", "\nimpl ", "\n}\n\n//"],
+            stop=stop_patterns,
+            mode=mode_active,
         ),
     )
 
@@ -298,8 +341,39 @@ async def _run_generation(req: dict, emit) -> None:
 # ─── App factory ──────────────────────────────────────────────────────
 
 
+@web.middleware
+async def _no_cache_middleware(request: web.Request, handler):
+    """Send `Cache-Control: no-store` on every response so neither the
+    Cloudflare edge nor the browser caches anything. We want every request
+    to reach this machine — when a CSS or JS change ships, viewers see it
+    on the next refresh, not 4 hours later when the edge happens to
+    revalidate.
+
+    Header semantics (this trips people up — including me, the first time):
+      - `no-cache`  = "you may store it, but revalidate via
+                     If-None-Match before serving the cached copy."
+                     Cloudflare's edge still STORES the response and
+                     reports `cf-cache-status: MISS/HIT`.
+      - `no-store`  = "don't store it at all." Cloudflare's edge skips
+                     caching entirely and reports `cf-cache-status: BYPASS`.
+                     This is what we want for the dev demo — no edge
+                     caching, no browser caching, every viewer always
+                     gets the live origin.
+
+    Pinned with `private, max-age=0, must-revalidate` for older clients
+    that don't honor `no-store` alone (rare, mostly belt-and-suspenders).
+    """
+    resp = await handler(request)
+    resp.headers["Cache-Control"] = (
+        "no-store, no-cache, must-revalidate, private, max-age=0"
+    )
+    resp.headers["Pragma"] = "no-cache"   # HTTP/1.0 legacy
+    resp.headers["Expires"] = "0"         # ditto
+    return resp
+
+
 def make_app() -> web.Application:
-    app = web.Application()
+    app = web.Application(middlewares=[_no_cache_middleware])
     app.router.add_get("/", index)
     app.router.add_get("/api/prompts", list_prompts)
     app.router.add_get("/api/prompts/{id}", get_prompt)

@@ -10,6 +10,60 @@ const modelSelect    = $("model-select");
 const cadenceInput   = $("cadence");
 const cadenceLabel   = $("cadence-label");
 const instructCheck  = $("instruct");
+const modeSelect     = $("mode-select");
+
+// Mirror of server-side `REASONING_MODELS`. Models that support reasoning
+// (and therefore can engage R1/T2/C3). Non-reasoning models silently fall
+// back to RAW on the server; UI greys the non-RAW options to surface that.
+const REASONING_MODELS = new Set([
+  "qwen3.5:9b", "qwen3.5:35b", "qwen3.5:122b",
+  "qwen3.6:35b", "qwen3.6:latest",
+  "gpt-oss:20b", "gpt-oss:120b",
+  "deepseek-r1:70b",
+  "nemotron-cascade-2:30b",
+  "nemotron-3-super:120b",
+  "nemotron-3-nano:4b",
+]);
+// Subset that has a chat-template registry entry for TWO_PHASE phase 1.
+// Mirror of `CHAT_TEMPLATES` keys in soundcode/llm.py — only qwen3.x for now.
+const TWO_PHASE_OK_PREFIXES = ["qwen3."];
+
+function _refreshModeOptionsForModel() {
+  const model = modelSelect.value || "";
+  const isReasoning = REASONING_MODELS.has(model);
+  const isTwoPhaseOk = TWO_PHASE_OK_PREFIXES.some(p => model.startsWith(p));
+  for (const opt of modeSelect.options) {
+    if (opt.value === "raw") { opt.disabled = false; continue; }
+    if (opt.value === "two_phase") {
+      opt.disabled = !(isReasoning && isTwoPhaseOk);
+    } else {
+      opt.disabled = !isReasoning;
+    }
+  }
+  // If the current selection is now disabled, coerce to RAW.
+  const cur = modeSelect.options[modeSelect.selectedIndex];
+  if (cur && cur.disabled) modeSelect.value = "raw";
+  _updateModeHint();
+}
+
+function _updateModeHint() {
+  const hint = $("mode-hint");
+  if (!hint) return;
+  const m = modeSelect.value;
+  const model = modelSelect.value || "";
+  const isReasoning = REASONING_MODELS.has(model);
+  const msgs = {
+    raw:               "Plain code completion. No thinking.",
+    raw_think_inject:  "Append <think>\\n to the prompt; split <think>/</think> from the raw stream. Per-model fragile.",
+    two_phase:         "Phase 1: harvest thinking via chat-template wrap. Phase 2: bake trace into prompt as comment, raw completion. Two round trips.",
+    chat_instructed:   "/api/chat with system prompt forbidding markdown. Reliable thinking + body extraction. One round trip.",
+  };
+  let text = msgs[m] || "";
+  if (m !== "raw" && !isReasoning) {
+    text = "Selected model is not a reasoning model — server will coerce to RAW. " + text;
+  }
+  hint.textContent = text;
+}
 const startBtn       = $("start-btn");
 const stopBtn        = $("stop-btn");
 const resetBtn       = $("reset-btn");
@@ -89,8 +143,9 @@ function showCodePreview(snapshot, highlightOffset, kind) {
     const off = highlightOffset != null
       ? Math.min(Math.max(highlightOffset, 0), snapshot.length)
       : snapshot.length;
-    const klass = kind === "error" ? "preview-highlight-error"
-                : kind === "ok"    ? "preview-highlight-ok"
+    const klass = kind === "error"    ? "preview-highlight-error"
+                : kind === "ok"       ? "preview-highlight-ok"
+                : kind === "rollback" ? "preview-highlight-rollback"
                 : null;
     if (klass && off > 0) {
       const lineStart = Math.max(0, snapshot.lastIndexOf("\n", off - 1) + 1);
@@ -298,7 +353,7 @@ function ingestToken(text, endOffset) {
 
   // LLM-panel pill — display whitespace with visible glyphs.
   const { display } = visualizeToken(text);
-  const pill = document.createElement("div");
+  const pill = document.createElement("span");
   pill.className = "token-pill";
   pill.dataset.offset = endOffset;
   pill.textContent = display;
@@ -306,16 +361,66 @@ function ingestToken(text, endOffset) {
   pill.setAttribute("title", JSON.stringify(text));
   if (/^\s+$/.test(text) || text === "") pill.classList.add("token-pill-ws");
   llmStack.appendChild(pill);
-  // The LLM panel stays full history; we'll trim only if it gets very long.
-  while (llmStack.children.length > 80) llmStack.removeChild(llmStack.firstChild);
+
+  // A code token arriving "anchors" any pending thinking pills — they
+  // belong to the thought run that produced this code, and should share
+  // its fate under rollback (see `applyRollback`).
+  if (state.unanchoredThinkPills && state.unanchoredThinkPills.length) {
+    for (const tp of state.unanchoredThinkPills) {
+      tp.dataset.anchorOffset = String(endOffset);
+    }
+    state.unanchoredThinkPills.length = 0;
+  }
+
+  _trimLlmStack();
 
   state.tokensByEndOffset.set(endOffset, { text, codeSpan, llmPill: pill });
   state.acceptedCode += text;
   state.tokens += 1;
   tokenCounter.textContent = state.tokens;
   codeBody.scrollTop = codeBody.scrollHeight;
-  // Scroll the LLM stack's parent to show the latest pill (newest is at bottom).
+  // Scroll the LLM stack's parent to show the latest pill (newest is at end).
   llmStack.parentElement.scrollTop = llmStack.parentElement.scrollHeight;
+}
+
+function ingestThinkToken(text) {
+  // Thinking tokens render in the LLM pane only — they never advance the
+  // code buffer, never become checkpoints, and never get a verdict. They
+  // sit "unanchored" until the next code token claims them; on rollback
+  // a thinking pill is marked discarded iff its anchor is in the
+  // discarded range (see `applyRollback`).
+  const { display } = visualizeToken(text);
+  const pill = document.createElement("span");
+  // `<think>` / `</think>` are synthesised by the server to bracket each
+  // thinking run — distinguish them visually from thinking-body tokens so
+  // the user can read the structure.
+  const isMarker = text === "<think>" || text === "</think>";
+  pill.className = "token-pill " + (isMarker ? "tok-think-marker" : "tok-think");
+  pill.textContent = display;
+  pill.setAttribute("title", JSON.stringify(text));
+  if (/^\s+$/.test(text) || text === "") pill.classList.add("token-pill-ws");
+  llmStack.appendChild(pill);
+
+  state.unanchoredThinkPills = state.unanchoredThinkPills || [];
+  state.unanchoredThinkPills.push(pill);
+
+  _trimLlmStack();
+  llmStack.parentElement.scrollTop = llmStack.parentElement.scrollHeight;
+}
+
+function _trimLlmStack() {
+  // Cap at 200 pills (was 80). Thinking traces can be long; we want enough
+  // history to still see the latest code tokens in context.
+  while (llmStack.children.length > 200) {
+    const first = llmStack.firstChild;
+    // If we trimmed an unanchored thinking pill, drop it from the tracking
+    // list too so it doesn't get orphaned-anchored later.
+    if (state.unanchoredThinkPills) {
+      const i = state.unanchoredThinkPills.indexOf(first);
+      if (i >= 0) state.unanchoredThinkPills.splice(i, 1);
+    }
+    llmStack.removeChild(first);
+  }
 }
 
 function colorTokenAt(endOffset, verdict, tooltip) {
@@ -341,21 +446,40 @@ function colorTokenAt(endOffset, verdict, tooltip) {
 function applyRollback(toOffset, discarded) {
   state.rollbacks += 1;
   rollbackCounter.textContent = state.rollbacks;
-  // Iterate and remove tokens whose end-offset > toOffset.
+  // Code-panel: discarded tokens get the strikedown animation (line-through,
+  // then drop + fade), then are removed from the DOM. The user briefly sees
+  // what's being struck out before it disappears, matching the live buffer
+  // state (which has already been truncated to `toOffset` server-side).
+  // LLM-panel: tokens past the survivor are NOT removed — they stay visible
+  // marked `tok-discarded` (dark red, struck through), so the history of
+  // what got rolled back is auditable.
   const toDrop = [];
+  const STRIKE_DURATION_MS = 1100;
   for (const [offset, entry] of state.tokensByEndOffset) {
     if (offset > toOffset) {
       toDrop.push(offset);
-      entry.codeSpan.classList.add("code-discarded");
-      // Defer the actual removal until the fade animation finishes so users
-      // can see what was dropped.
       const span = entry.codeSpan;
-      setTimeout(() => span.remove(), 1400);
-      // The LLM pill stays in history but loses its checkpoint coloring.
+      span.classList.remove("tok-ok", "tok-error");
+      span.classList.add("tok-strikedown");
+      setTimeout(() => { try { span.remove(); } catch (_) {} }, STRIKE_DURATION_MS);
       entry.llmPill.classList.remove("tok-ok", "tok-error");
+      entry.llmPill.classList.add("tok-discarded");
     }
   }
   for (const offset of toDrop) state.tokensByEndOffset.delete(offset);
+
+  // Thinking pills: a `<think>` block belongs to the FIRST code token that
+  // followed it (their `anchor_offset`). If that anchor is in the discarded
+  // range the whole block is discarded too; otherwise it stays clean.
+  // Unanchored pills (in-flight thinking that hasn't produced code yet)
+  // are left alone — they may still belong to a code token yet to arrive.
+  for (const pill of llmStack.querySelectorAll(".tok-think, .tok-think-marker")) {
+    const a = pill.dataset.anchorOffset;
+    if (a != null && parseInt(a, 10) > toOffset) {
+      pill.classList.add("tok-discarded");
+    }
+  }
+
   state.acceptedCode = state.acceptedCode.slice(0, toOffset);
 }
 
@@ -473,15 +597,23 @@ function handleEvent(ev) {
     case "reset_buffer":
       state.acceptedCode = "";
       state.tokensByEndOffset.clear();
+      if (state.unanchoredThinkPills) state.unanchoredThinkPills.length = 0;
       codeBody.textContent = "";
       llmStack.innerHTML = "";
       break;
     case "token_emitted": {
-      // ev.offset is the buffer length AFTER this token is appended.
-      ingestToken(ev.text, ev.offset);
-      // Pipeline: capsule animates LLM → CODE for every token.
-      spawnCapsule(pipeTokenLabel(ev.text), "token",
-                   pipeLlmBlock, pipeCodeBlock, 500);
+      // Server-emitted tokens carry `kind`: "code" or "think".
+      // Thinking tokens render in the LLM pane only and do NOT flow through
+      // the LLM → CODE pipeline capsule (they never become code).
+      const kind = ev.kind || "code";
+      if (kind === "think") {
+        ingestThinkToken(ev.text);
+      } else {
+        // ev.offset is the buffer length AFTER this token is appended.
+        ingestToken(ev.text, ev.offset);
+        spawnCapsule(pipeTokenLabel(ev.text), "token",
+                     pipeLlmBlock, pipeCodeBlock, 500);
+      }
       break;
     }
     case "check_started": {
@@ -595,6 +727,7 @@ function resetUi() {
   lspEntriesByBody.clear();
   state.acceptedCode = "";
   state.tokensByEndOffset.clear();
+  if (state.unanchoredThinkPills) state.unanchoredThinkPills.length = 0;
   state.tokens = 0;
   state.rollbacks = 0;
   state.checkpoints = 1;
@@ -620,6 +753,7 @@ function onStart() {
     model: modelSelect.value,
     token_delay_ms: parseInt(cadenceInput.value, 10) || 0,
     instruct: instructCheck.checked,
+    mode: modeSelect ? modeSelect.value : "raw",
   };
   send(req);
   setStatus("loading", "starting…");
@@ -649,6 +783,11 @@ function init() {
   resetBtn.addEventListener("click", onReset);
   cadenceInput.addEventListener("input", onCadenceInput);
   promptSelect.addEventListener("change", onPromptSelected);
+  if (modeSelect) {
+    modeSelect.addEventListener("change", _updateModeHint);
+    modelSelect.addEventListener("change", _refreshModeOptionsForModel);
+    _refreshModeOptionsForModel();
+  }
   const orderEl = document.getElementById("prompt-order");
   if (orderEl) orderEl.addEventListener("change", rebuildPromptSelect);
   // Cross-panel hover highlight: any token/log-entry in these three regions
