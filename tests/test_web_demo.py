@@ -84,7 +84,20 @@ def browser():
 def page(browser, server_url):
     ctx = browser.new_context()
     page = ctx.new_page()
-    page.goto(server_url, wait_until="networkidle")
+    # Use "load" (not "networkidle"): the page opens a persistent WebSocket
+    # to /ws on init, and Playwright's networkidle heuristic interacts
+    # poorly with that — under multilang loadPrompts() pushing two
+    # sequential fetches before the WS open, networkidle was timing out
+    # intermittently and leaving the page in a half-initialized state.
+    # `load` waits for the standard "load" event, by which point the
+    # prompt list has been populated and #start-btn is interactive.
+    page.goto(server_url, wait_until="load")
+    # Explicitly wait for the prompt list to populate so tests that
+    # interact with #prompt-select are deterministic.
+    page.wait_for_function(
+        "document.querySelector('#prompt-select').options.length > 0",
+        timeout=10000,
+    )
     yield page
     ctx.close()
 
@@ -100,7 +113,7 @@ def test_page_loads(page):
 
 def test_controls_present(page):
     for sel in [
-        "#prompt-select", "#verifier-select", "#model-select",
+        "#prompt-select", "#lang-select", "#verifier-select", "#model-select",
         "#cadence", "#instruct",
         "#start-btn", "#stop-btn", "#reset-btn",
         "#prompt-editor",
@@ -155,10 +168,13 @@ def test_free_text_prompt(page):
 
 
 def test_verifier_toggle(page):
-    page.select_option("#verifier-select", value="ra")
-    expect(page.locator("#verifier-select")).to_have_value("ra")
-    page.select_option("#verifier-select", value="cargo")
-    expect(page.locator("#verifier-select")).to_have_value("cargo")
+    # Verifier names changed from cargo/ra to compiler/lsp in the multilingual
+    # phase; the server still accepts the old names as aliases, but the UI
+    # exposes only the generic names.
+    page.select_option("#verifier-select", value="lsp")
+    expect(page.locator("#verifier-select")).to_have_value("lsp")
+    page.select_option("#verifier-select", value="compiler")
+    expect(page.locator("#verifier-select")).to_have_value("compiler")
 
 
 def test_cadence_slider_label_updates(page):
@@ -284,12 +300,14 @@ def test_cross_panel_hover_highlights(page):
 
 def test_defaults(page):
     """Default options: instruct OFF, TWO_PHASE orchestration, qwen3.5:122b model,
-    cargo verifier, and the LeetCode 37 problem auto-selected with its prompt in
+    compiler verifier (the multilingual-friendly name for what was "cargo"),
+    rust language, and the LeetCode 37 problem auto-selected with its prompt in
     the editor."""
     expect(page.locator("#instruct")).not_to_be_checked()
     expect(page.locator("#mode-select")).to_have_value("two_phase")
     expect(page.locator("#model-select")).to_have_value("qwen3.5:122b")
-    expect(page.locator("#verifier-select")).to_have_value("cargo")
+    expect(page.locator("#lang-select")).to_have_value("rust")
+    expect(page.locator("#verifier-select")).to_have_value("compiler")
     expect(page.locator("#prompt-select")).to_have_value("LeetCode_37_solve_sudoku")
     page.wait_for_function(
         "() => document.getElementById('prompt-editor').value.includes('solve_sudoku')",
@@ -309,7 +327,12 @@ def test_lsp_hover_shows_code_preview(page):
     """)
     entry = page.locator(".lsp-entry").first
     entry.hover()
-    expect(page.locator("#code-preview")).to_have_class("panel-body code active")
+    # to_have_class is exact-match in Playwright; we now also tag the
+    # preview with `language-<lang>` so the highlighter (future drop-in)
+    # knows which grammar to use. Check for active via attribute string.
+    klasses = page.locator("#code-preview").get_attribute("class") or ""
+    assert "active" in klasses, klasses
+    assert "panel-body" in klasses and "code" in klasses, klasses
     # Highlight span uses the ok class.
     expect(page.locator(".preview-highlight-ok")).to_be_visible()
     # Move away → preview hides.
@@ -339,12 +362,15 @@ def test_lsp_entry_click_pins_code_preview(page):
     first.click()
     klasses = first.get_attribute("class") or ""
     assert "lsp-entry-pinned" in klasses, klasses
-    expect(page.locator("#code-preview")).to_have_class("panel-body code active")
+    # Multilingual: preview also carries `language-<lang>`; relaxed check.
+    preview_klasses = page.locator("#code-preview").get_attribute("class") or ""
+    assert "active" in preview_klasses, preview_klasses
     expect(page.locator(".preview-highlight-ok")).to_be_visible()
     # Move the mouse far away. The preview must STAY visible because it's pinned.
     page.mouse.move(0, 0)
     page.wait_for_timeout(60)
-    expect(page.locator("#code-preview")).to_have_class("panel-body code active")
+    preview_klasses = page.locator("#code-preview").get_attribute("class") or ""
+    assert "active" in preview_klasses, preview_klasses
     # Click the same entry again → unpins.
     first.click()
     klasses = first.get_attribute("class") or ""

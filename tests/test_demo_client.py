@@ -384,6 +384,105 @@ async def test_real_llm_per_mode(mode):
             f"[{mode.value}] expected think tokens, got zero"
 
 
+def _make_two_phase_llm(token_attempts, *, phase1_call_counter):
+    """Build a FakeLlm wired for TWO_PHASE mode. Pre-pads with an empty
+    attempt because `DemoClient.generate` calls `set_prompt` twice before
+    the main loop in TWO_PHASE (initial + post-phase-1), each call advancing
+    the FakeLlm's attempt index. The empty pad absorbs that initial flip
+    so the test's `token_attempts[0]` runs first."""
+    class _Fake(FakeLlm):
+        async def stream_thinking_phase(self, prompt):
+            phase1_call_counter[0] += 1
+            yield Token("consider", "think")
+            yield Token(" the error", "think")
+    llm = _Fake([])           # empty slot absorbs the initial set_prompt
+    for atts in token_attempts:
+        llm.add_attempt(atts)
+    llm.config.mode = OrchestrationMode.TWO_PHASE
+    return llm
+
+
+@pytest.mark.asyncio
+async def test_two_phase_reenter_thinking_on_rollback():
+    """When `reenter_thinking_on_rollback` is on AND mode is TWO_PHASE,
+    every cargo-error rollback must invoke `stream_thinking_phase` a SECOND
+    (and third, …) time on the rolled-back prompt. This is the path where
+    "instruct on rollback + a thinking mode" composes into "re-reason about
+    the cargo error before re-attempting"."""
+    from soundcode.code import Category, Diagnostic
+    phase1 = [0]
+    err = Diagnostic(category=Category.BLOCKING, code="E0425",
+                     message="cannot find function `bad_call`")
+    # Two real attempts: first hits cargo error, second exits via body_closed.
+    llm = _make_two_phase_llm(
+        # First attempt: no closing brace → boundary at `;` triggers a check;
+        # the stream exhausts cleanly so the producer loop awaits the verdict
+        # instead of body_closed-short-circuiting. Second attempt: closes the
+        # body so the post-rollback run terminates without piling on rollbacks.
+        [["let x = 1;"], ["    let y = 2;", "\n}"]],
+        phase1_call_counter=phase1,
+    )
+    llm.config.reenter_thinking_on_rollback = True
+    checker = ScriptedChecker([[err], []])
+    events: list[dict] = []
+    demo = DemoClient(
+        llm=llm, checker=checker,
+        config=DemoConfig(token_delay_s=0, repetition_window=0,
+                          wall_budget_s=5, max_continuations=0,
+                          instruct_on_rollback=True),
+        emit=lambda ev: events.append(ev) or asyncio.sleep(0),
+    )
+    await demo.generate("fn f() {")
+
+    rbs = [e for e in events if e["type"] == "rollback"]
+    assert len(rbs) >= 1, [e["type"] for e in events]
+    # Phase 1 ran at least twice: once at the start, once on the rollback.
+    assert phase1[0] >= 2, (
+        f"expected ≥2 phase-1 invocations (initial + 1 per rollback), got {phase1[0]}"
+    )
+    # The "re-thinking" status surfaced in the event stream.
+    statuses = [e.get("message","") for e in events if e["type"] == "status"]
+    assert any("re-thinking" in m for m in statuses), statuses
+
+
+@pytest.mark.asyncio
+async def test_two_phase_no_reenter_when_flag_off():
+    """Reenter is OPT-IN: with the flag off, phase 1 must run exactly once
+    even when a rollback fires."""
+    from soundcode.code import Category, Diagnostic
+    phase1 = [0]
+    err = Diagnostic(category=Category.BLOCKING, code="E0425",
+                     message="cannot find function `bad_call`")
+    llm = _make_two_phase_llm(
+        # First attempt: no closing brace → boundary at `;` triggers a check;
+        # the stream exhausts cleanly so the producer loop awaits the verdict
+        # instead of body_closed-short-circuiting. Second attempt: closes the
+        # body so the post-rollback run terminates without piling on rollbacks.
+        [["let x = 1;"], ["    let y = 2;", "\n}"]],
+        phase1_call_counter=phase1,
+    )
+    llm.config.reenter_thinking_on_rollback = False
+    checker = ScriptedChecker([[err], []])
+    events: list[dict] = []
+    demo = DemoClient(
+        llm=llm, checker=checker,
+        config=DemoConfig(token_delay_s=0, repetition_window=0,
+                          wall_budget_s=5, max_continuations=0,
+                          instruct_on_rollback=False),
+        emit=lambda ev: events.append(ev) or asyncio.sleep(0),
+    )
+    await demo.generate("fn f() {")
+
+    rbs = [e for e in events if e["type"] == "rollback"]
+    assert len(rbs) >= 1, (
+        f"expected a rollback to actually fire so this isn't a vacuous "
+        f"test, got events {[e['type'] for e in events]}"
+    )
+    assert phase1[0] == 1, (
+        f"expected exactly 1 phase-1 call when reenter is off, got {phase1[0]}"
+    )
+
+
 @pytest.mark.asyncio
 async def test_two_phase_dispatch_runs_phase1_then_phase2():
     """TWO_PHASE: DemoClient must call `llm.stream_thinking_phase(prompt)`

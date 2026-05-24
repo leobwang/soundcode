@@ -1,0 +1,16 @@
+# Reconstructed from imports in upstream/ — the file referenced by README.md
+# is not present in the upstream repo (commit 18dadd75). See ../MODIFICATIONS.md.
+# transformers is installed separately from the vendored fork in ./transformers
+torch
+accelerate
+peft
+bitsandbytes
+deepspeed
+datasets
+sentencepiece
+protobuf
+numpy
+pandas
+scikit-learn
+tqdm
+pyext

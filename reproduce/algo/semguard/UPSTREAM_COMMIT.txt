@@ -1,0 +1,5 @@
+source: https://github.com/wwwql/SemGuard
+commit: 18dadd7578dfbdb8d087eb12ef08d817c28e26ec
+commit_date: 2026-04-07T15:36:44+08:00
+vendored_on: 2026-05-23
+vendored_by: claude-code

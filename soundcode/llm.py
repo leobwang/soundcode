@@ -115,6 +115,14 @@ class GenerationConfig:
     # tokens) covers normal reasoning runs on small models and bounds the
     # large ones to a hard wall-clock ceiling.
     think_char_budget: int = 8000
+    # When True, R1 / TWO_PHASE / CHAT_INSTRUCTED do NOT one-shot-flip to
+    # RAW after the first stream open. Every rollback re-runs the thinking-
+    # mode protocol (re-inject `<think>`, re-run phase 1, or re-open chat).
+    # Wired up by the server when `instruct_on_rollback` is on AND mode is a
+    # thinking mode — the idea is that if we're already paying for an
+    # instructive comment in the rollback prompt, we should also give the
+    # model another chance to reason about it before continuing.
+    reenter_thinking_on_rollback: bool = False
 
 
 @dataclass
@@ -597,7 +605,10 @@ class LlmServer:
         mode = self.config.mode
         if mode == OrchestrationMode.CHAT_INSTRUCTED:
             await self._open_chat_instructed_stream()
-            self.config.mode = OrchestrationMode.RAW
+            # One-shot flip unless reenter-thinking is on, in which case the
+            # next rollback gets another chat call with the updated prompt.
+            if not self.config.reenter_thinking_on_rollback:
+                self.config.mode = OrchestrationMode.RAW
             return
         # All non-chat modes share the raw `/api/generate` path. Inject
         # `<think>` only for `RAW_THINK_INJECT`.
@@ -619,7 +630,11 @@ class LlmServer:
             # response (re-declaring the function, opening a markdown fence,
             # etc.) rather than continuing the prompt literally. Subsequent
             # rollback/continuation attempts get plain raw completion.
-            self.config.mode = OrchestrationMode.RAW
+            # When reenter-thinking is on, skip the flip — each rollback
+            # gets another `<think>` injection (the model re-reasons about
+            # the error comment that the instruct path just added).
+            if not self.config.reenter_thinking_on_rollback:
+                self.config.mode = OrchestrationMode.RAW
         payload = {
             "model": self.model,
             "prompt": outgoing_prompt,

@@ -5,12 +5,40 @@ const $ = (id) => document.getElementById(id);
 const statusEl       = $("status");
 const wsStatusEl     = $("ws-status");
 const promptSelect   = $("prompt-select");
+const langSelect     = $("lang-select");
 const verifierSelect = $("verifier-select");
 const modelSelect    = $("model-select");
 const cadenceInput   = $("cadence");
 const cadenceLabel   = $("cadence-label");
 const instructCheck  = $("instruct");
 const modeSelect     = $("mode-select");
+
+// Multilingual support: when the language dropdown changes we reload
+// `/api/prompts?lang=…` and switch the code panel's syntax-class on
+// `#code-body` (`language-rust`, `language-java`, …). The panel is a
+// plain `<pre>` today (no Prism/Highlight.js), but tagging the class
+// keeps the option open for a future highlighter drop-in without
+// further JS changes.
+function currentLang() {
+  return (langSelect && langSelect.value) || "rust";
+}
+
+function applyLanguageClass() {
+  const lang = currentLang();
+  if (!codeBody) return;
+  // Strip any prior language-* class so we don't accumulate them.
+  codeBody.classList.forEach((c) => {
+    if (c.startsWith("language-")) codeBody.classList.remove(c);
+  });
+  codeBody.classList.add(`language-${lang}`);
+  const cp = $("code-preview");
+  if (cp) {
+    cp.classList.forEach((c) => {
+      if (c.startsWith("language-")) cp.classList.remove(c);
+    });
+    cp.classList.add(`language-${lang}`);
+  }
+}
 
 // Mirror of server-side `REASONING_MODELS`. Models that support reasoning
 // (and therefore can engage R1/T2/C3). Non-reasoning models silently fall
@@ -52,6 +80,7 @@ function _updateModeHint() {
   const m = modeSelect.value;
   const model = modelSelect.value || "";
   const isReasoning = REASONING_MODELS.has(model);
+  const instructOn = instructCheck && instructCheck.checked;
   const msgs = {
     raw:               "Plain code completion. No thinking.",
     raw_think_inject:  "Append <think>\\n to the prompt; split <think>/</think> from the raw stream. Per-model fragile.",
@@ -61,6 +90,8 @@ function _updateModeHint() {
   let text = msgs[m] || "";
   if (m !== "raw" && !isReasoning) {
     text = "Selected model is not a reasoning model — server will coerce to RAW. " + text;
+  } else if (m !== "raw" && instructOn) {
+    text += " RE-ENTER ON: each rollback re-runs thinking with the cargo-error comment in context.";
   }
   hint.textContent = text;
 }
@@ -222,7 +253,11 @@ const MIN_PROMPT_LEN = 800;  // filter: hide trivially-short problems
 function rebuildPromptSelect() {
   const orderEl = document.getElementById("prompt-order");
   const order = orderEl ? orderEl.value : "id";
-  const filtered = allPrompts.filter((p) => (p.prompt_len || 0) > MIN_PROMPT_LEN);
+  // Custom prompts always pass the filter — they're hand-picked, short on
+  // purpose. Only HumanEval entries get the >MIN_PROMPT_LEN treatment.
+  const filtered = allPrompts.filter(
+    (p) => p.is_custom || (p.prompt_len || 0) > MIN_PROMPT_LEN
+  );
   if (order === "length") {
     filtered.sort((a, b) => (b.prompt_len || 0) - (a.prompt_len || 0));
   }
@@ -241,13 +276,19 @@ function rebuildPromptSelect() {
 
 async function loadPrompts() {
   try {
-    const res = await fetch("/api/prompts");
+    const lang = currentLang();
+    const res = await fetch(`/api/prompts?lang=${encodeURIComponent(lang)}`);
     allPrompts = await res.json();
     rebuildPromptSelect();
     // Auto-select the first non-blank entry actually in the dropdown.
     if (promptSelect.options.length > 1) {
       promptSelect.selectedIndex = 1;
       await onPromptSelected();
+    } else {
+      // Non-Rust languages may have only the curated 3-prompt set, in
+      // which case the MIN_PROMPT_LEN filter trims everything. Re-show
+      // all custom prompts (they're short by design) when that happens.
+      promptEditor.value = "";
     }
   } catch (e) {
     console.error("loadPrompts failed:", e);
@@ -258,7 +299,10 @@ async function onPromptSelected() {
   const id = promptSelect.value;
   if (!id) return;
   try {
-    const res = await fetch(`/api/prompts/${encodeURIComponent(id)}`);
+    const lang = currentLang();
+    const res = await fetch(
+      `/api/prompts/${encodeURIComponent(id)}?lang=${encodeURIComponent(lang)}`
+    );
     const obj = await res.json();
     if (obj.prompt) {
       promptEditor.value = obj.prompt;
@@ -749,6 +793,7 @@ function onStart() {
   const req = {
     type: "start",
     prompt,
+    language: currentLang(),
     verifier: verifierSelect.value,
     model: modelSelect.value,
     token_delay_ms: parseInt(cadenceInput.value, 10) || 0,
@@ -786,6 +831,7 @@ function init() {
   if (modeSelect) {
     modeSelect.addEventListener("change", _updateModeHint);
     modelSelect.addEventListener("change", _refreshModeOptionsForModel);
+    if (instructCheck) instructCheck.addEventListener("change", _updateModeHint);
     _refreshModeOptionsForModel();
   }
   const orderEl = document.getElementById("prompt-order");
@@ -830,6 +876,16 @@ function init() {
   });
   onCadenceInput();
   stopBtn.disabled = true;
+  // Language change re-loads the prompt list and updates the syntax-class
+  // on the code panel. Defer the prompt fetch slightly so a fast user
+  // doesn't fire two in flight in parallel.
+  if (langSelect) {
+    langSelect.addEventListener("change", async () => {
+      applyLanguageClass();
+      await loadPrompts();
+    });
+    applyLanguageClass();
+  }
   loadPrompts();
   openWs();
   setStatus("idle", "");

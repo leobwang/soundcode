@@ -1,0 +1,18 @@
+# Per-run logs (large, regenerable)
+results/
+
+# Extracted datasets (large)
+data/
+
+# Per-paper venvs
+algo/*/.venv/
+
+# Training checkpoints (large, regenerable)
+model/
+
+# Conda envs (if user creates them inside the repo, which they shouldn't)
+algo/*/envs/
+
+# Python build artifacts inside vendored upstream
+algo/*/upstream/**/__pycache__/
+algo/*/upstream/**/*.egg-info/

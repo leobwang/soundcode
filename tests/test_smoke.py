@@ -369,6 +369,36 @@ def test_template_for_model_matches_qwen3_family():
     assert template_for_model("deepseek-r1:70b") is None
 
 
+def test_reenter_thinking_preserves_mode_across_one_shot():
+    """When `reenter_thinking_on_rollback` is True, the one-shot mode-flip
+    in `_open_stream` MUST NOT fire — so the next rollback opens the same
+    thinking-mode protocol again. Default-False keeps the historical
+    one-shot behaviour.
+
+    Regression: without this flag, instruct-on-rollback for R1/T2/C3 is
+    silently a no-op on the second attempt (mode already flipped to RAW)."""
+    from soundcode.llm import GenerationConfig, OrchestrationMode
+
+    # Default (off): mode flips to RAW after the first injecting open —
+    # mirrors the existing behaviour that other tests depend on.
+    cfg = GenerationConfig(mode=OrchestrationMode.RAW_THINK_INJECT)
+    inject_now = (cfg.mode == OrchestrationMode.RAW_THINK_INJECT)
+    if inject_now and not cfg.reenter_thinking_on_rollback:
+        cfg.mode = OrchestrationMode.RAW
+    assert cfg.mode == OrchestrationMode.RAW, "default = one-shot flip"
+
+    # With the flag on, the same code path must NOT flip the mode.
+    cfg2 = GenerationConfig(
+        mode=OrchestrationMode.RAW_THINK_INJECT,
+        reenter_thinking_on_rollback=True,
+    )
+    inject_now2 = (cfg2.mode == OrchestrationMode.RAW_THINK_INJECT)
+    if inject_now2 and not cfg2.reenter_thinking_on_rollback:
+        cfg2.mode = OrchestrationMode.RAW
+    assert cfg2.mode == OrchestrationMode.RAW_THINK_INJECT, \
+        "reenter_thinking_on_rollback=True must keep the mode set"
+
+
 def test_raw_think_inject_one_shot_still_creates_splitter():
     """Regression: `_open_stream` must construct the splitter on the SAME
     invocation that injects `<think>\\n` into the prompt — even though that

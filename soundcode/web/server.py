@@ -1,17 +1,19 @@
 """Web-demo server for the rollback generator.
 
 Single aiohttp server:
-  - GET  /             → index.html
-  - GET  /static/*     → static assets
-  - GET  /api/prompts  → list of bundled HumanEval prompts (id + truncated docstring)
-  - GET  /api/prompts/{id} → full prompt text
-  - WS   /ws           → bidirectional protocol (see Events below)
+  - GET  /                    -> index.html
+  - GET  /static/*            -> static assets
+  - GET  /api/prompts?lang=…  -> list of bundled prompts for `lang` (default rust)
+  - GET  /api/prompts/{id}?lang=…  -> full prompt text for `id` within `lang`
+  - WS   /ws                  -> bidirectional protocol (see Events below)
 
 Run:
     uv run python -m soundcode.web.server [--host 127.0.0.1] [--port 8765]
 
-Events client→server:
-  {"type": "start", "prompt": str, "verifier": "cargo"|"ra",
+Events client->server:
+  {"type": "start", "prompt": str,
+   "verifier": "compiler"|"lsp"|"cargo"|"ra",  # cargo/ra are legacy aliases
+   "language": "rust"|"java"|"cpp"|"python",   # default "rust"
    "model": str, "token_delay_ms": int, "instruct": bool}
   {"type": "stop"}
 
@@ -33,15 +35,41 @@ import argparse
 import asyncio
 import json
 import os
+import shutil
+import tempfile
 from pathlib import Path
 
 from aiohttp import web, WSMsgType
 
-from soundcode.cargo_check import CargoChecker
+from soundcode.lang.cpp import (
+    ClangdLspChecker,
+    CppBoundaryDetector,
+    CppWorkspace,
+    GccChecker,
+)
+from soundcode.lang.java import (
+    JavaBoundaryDetector,
+    JavaWorkspace,
+    JavacChecker,
+    JdtLspChecker,
+)
+from soundcode.lang.python import (
+    PyrightLspChecker,
+    PythonBoundaryDetector,
+    PythonCompileChecker,
+    PythonWorkspace,
+)
+from soundcode.lang.rust import (
+    RustAnalyzerLspChecker,
+    RustBoundaryDetector,
+    RustCargoChecker,
+    RustWorkspace,
+)
 from soundcode.llm import LlmServer, GenerationConfig
 from soundcode.eval.dataset import load_rust_humaneval
 from soundcode.web.demo_client import DemoClient, DemoConfig
 from soundcode.web.extra_prompts import CUSTOM_PROBLEMS
+from soundcode.web.extra_prompts_multi import PROBLEMS_BY_LANG
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -49,19 +77,151 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 DEMO_WS = PROJECT_ROOT / "cargo_workspaces" / "web_demo"
 LOGS_DIR = PROJECT_ROOT / "results" / "web_demo"
 
+SUPPORTED_LANGS = ("rust", "java", "cpp", "python")
+
+
+# Map UI-level verifier names ("compiler"/"lsp" — the new generalized
+# names, plus legacy Rust-only "cargo"/"ra") to the canonical internal
+# tags. The legacy aliases keep backward compat with older clients still
+# sending "cargo"/"ra" in the WS start payload.
+_MODE_ALIASES: dict[str, str] = {
+    "cargo": "compiler",
+    "compiler": "compiler",
+    "ra": "lsp",
+    "lsp": "lsp",
+}
+
+
+def _normalize_mode(verifier: str) -> str:
+    """Map any of {compiler, cargo, lsp, ra} to {compiler, lsp}."""
+    return _MODE_ALIASES.get(verifier, "compiler")
+
+
+# Friendly install hints surfaced as a status:error event when the
+# required binary is missing on this machine.
+_INSTALL_HINTS: dict[str, str] = {
+    "cargo": "cargo not installed; install via rustup (https://rustup.rs).",
+    "rust-analyzer": "rust-analyzer not installed; install via "
+                     "`rustup component add rust-analyzer`.",
+    "javac": "javac not installed; install via `apt install default-jdk` "
+             "(or equivalent).",
+    "jdt.ls": "Eclipse JDT.LS bundle missing; first multilspy run will "
+              "download it (~hundreds of MB).",
+    "g++": "g++ not installed; install via `apt install g++` (or equivalent).",
+    "clangd": "clangd not installed; install via `apt install clangd` "
+              "(or equivalent).",
+    "python": "python interpreter not available (this should not happen).",
+    "pyright-langserver": "pyright not installed; install via "
+                          "`uv add pyright` or `npm i -g pyright`.",
+}
+
+
+def _tool_available(tool: str) -> bool:
+    """Best-effort `which`-based probe."""
+    if tool == "python":
+        return True
+    if tool == "jdt.ls":
+        # multilspy downloads JDT.LS lazily on first use; we can't probe
+        # for it without booting the server. Trust that it will work; if
+        # not, JdtLspChecker.start() surfaces the failure.
+        return True
+    binary = {
+        "cargo": "cargo",
+        "rust-analyzer": "rust-analyzer",
+        "javac": "javac",
+        "g++": "g++",
+        "clangd": "clangd",
+        "pyright-langserver": "pyright-langserver",
+    }.get(tool, tool)
+    return shutil.which(binary) is not None
+
+
+# Workspace factories — return a fresh Workspace instance whose `path`
+# (if applicable) is already pointed at the right directory. Rust points
+# at a persistent dir under `cargo_workspaces/` so cargo's incremental
+# cache survives across runs; the others use a fresh tempdir per run.
+
+
+def _rust_workspace_factory() -> RustWorkspace:
+    return RustWorkspace(path=DEMO_WS)
+
+
+def _java_workspace_factory() -> JavaWorkspace:
+    return JavaWorkspace()
+
+
+def _cpp_workspace_factory() -> CppWorkspace:
+    return CppWorkspace(path=Path(tempfile.mkdtemp(prefix="soundcode_cpp_demo_")))
+
+
+def _python_workspace_factory() -> PythonWorkspace:
+    return PythonWorkspace()
+
+
+# Dispatch table: (language, mode) -> dict of factories. `checker_cls`
+# is invoked as `checker_cls(workspace=<path>)`; `boundary_cls()` takes
+# no args; `workspace_factory()` returns the Workspace instance whose
+# `setup()` we then call.
+LANG_DISPATCH = {
+    ("rust", "compiler"): {
+        "workspace_factory": _rust_workspace_factory,
+        "checker_cls": RustCargoChecker,
+        "boundary_cls": RustBoundaryDetector,
+        "tool": "cargo",
+    },
+    ("rust", "lsp"): {
+        "workspace_factory": _rust_workspace_factory,
+        "checker_cls": RustAnalyzerLspChecker,
+        "boundary_cls": RustBoundaryDetector,
+        "tool": "rust-analyzer",
+    },
+    ("java", "compiler"): {
+        "workspace_factory": _java_workspace_factory,
+        "checker_cls": JavacChecker,
+        "boundary_cls": JavaBoundaryDetector,
+        "tool": "javac",
+    },
+    ("java", "lsp"): {
+        "workspace_factory": _java_workspace_factory,
+        "checker_cls": JdtLspChecker,
+        "boundary_cls": JavaBoundaryDetector,
+        "tool": "jdt.ls",
+    },
+    ("cpp", "compiler"): {
+        "workspace_factory": _cpp_workspace_factory,
+        "checker_cls": GccChecker,
+        "boundary_cls": CppBoundaryDetector,
+        "tool": "g++",
+    },
+    ("cpp", "lsp"): {
+        "workspace_factory": _cpp_workspace_factory,
+        "checker_cls": ClangdLspChecker,
+        "boundary_cls": CppBoundaryDetector,
+        "tool": "clangd",
+    },
+    ("python", "compiler"): {
+        "workspace_factory": _python_workspace_factory,
+        "checker_cls": PythonCompileChecker,
+        "boundary_cls": PythonBoundaryDetector,
+        "tool": "python",
+    },
+    ("python", "lsp"): {
+        "workspace_factory": _python_workspace_factory,
+        "checker_cls": PyrightLspChecker,
+        "boundary_cls": PythonBoundaryDetector,
+        "tool": "pyright-langserver",
+    },
+}
+
 
 # ─── workspace + checker wiring ───────────────────────────────────────
 
 
 def _ensure_workspace() -> Path:
-    DEMO_WS.mkdir(parents=True, exist_ok=True)
-    (DEMO_WS / "Cargo.toml").write_text(
-        '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n\n'
-        '[[bin]]\nname = "demo"\npath = "src/main.rs"\n'
-    )
-    (DEMO_WS / "src").mkdir(exist_ok=True)
-    (DEMO_WS / "src" / "main.rs").write_text("fn main() {}\n")
-    return DEMO_WS
+    """Materialize the Rust demo workspace. Thin wrapper over
+    `RustWorkspace.setup()` — kept as a module-level helper so tests and
+    other callers can still import it under its historical name."""
+    return RustWorkspace(path=DEMO_WS).setup()
 
 
 async def _warm_cargo(ws: Path) -> None:
@@ -81,9 +241,17 @@ _PROBLEMS_CACHE = None
 
 
 def _problems():
+    """Rust HumanEval problems (lazy-loaded; cached). Only Rust ships with
+    a bundled HumanEval set — the other languages get just the curated
+    prompt list from `extra_prompts_multi.py`."""
     global _PROBLEMS_CACHE
     if _PROBLEMS_CACHE is None:
-        _PROBLEMS_CACHE = load_rust_humaneval()
+        try:
+            _PROBLEMS_CACHE = load_rust_humaneval()
+        except Exception:
+            # Dataset/HF unavailable (e.g., offline test env). Degrade to
+            # just the custom prompt list rather than crashing the server.
+            _PROBLEMS_CACHE = []
     return _PROBLEMS_CACHE
 
 
@@ -91,42 +259,67 @@ async def index(request):
     return web.FileResponse(STATIC_DIR / "index.html")
 
 
+def _request_lang(request) -> str:
+    """Pull the `lang` query param, defaulting to "rust" (= backward
+    compat with clients that don't pass one)."""
+    lang = request.query.get("lang", "rust").lower()
+    if lang not in SUPPORTED_LANGS:
+        lang = "rust"
+    return lang
+
+
+def _custom_problems_for(lang: str) -> list:
+    """Curated prompts for the given language. Rust draws from
+    `extra_prompts.CUSTOM_PROBLEMS`; the others from
+    `extra_prompts_multi.PROBLEMS_BY_LANG`."""
+    if lang == "rust":
+        return list(CUSTOM_PROBLEMS)
+    return list(PROBLEMS_BY_LANG.get(lang, []))
+
+
 def _custom_first(extra=CUSTOM_PROBLEMS) -> list:
-    """Return a single combined list: custom problems first, then HumanEval."""
+    """Return a single combined list: custom problems first, then HumanEval.
+    Rust-only (kept for callers that import this directly)."""
     return list(extra) + list(_problems())
 
 
 async def list_prompts(request):
+    lang = _request_lang(request)
     out = []
-    for p in CUSTOM_PROBLEMS:
+    for p in _custom_problems_for(lang):
         out.append({
             "id": p.name,
             "title": p.title[:90],
             "prompt_len": len(p.prompt),
             "is_custom": True,
         })
-    for p in _problems():
-        first_line = next(
-            (ln for ln in p.prompt.split("\n") if ln.startswith("///")),
-            p.name,
-        ).strip("/ ").strip()
-        out.append({
-            "id": p.name,
-            "title": first_line[:90],
-            "prompt_len": len(p.prompt),
-            "is_custom": False,
-        })
+    # Only Rust ships the MultiPL-E HumanEval set. Other languages get
+    # just the curated prompt list above.
+    if lang == "rust":
+        for p in _problems():
+            first_line = next(
+                (ln for ln in p.prompt.split("\n") if ln.startswith("///")),
+                p.name,
+            ).strip("/ ").strip()
+            out.append({
+                "id": p.name,
+                "title": first_line[:90],
+                "prompt_len": len(p.prompt),
+                "is_custom": False,
+            })
     return web.json_response(out)
 
 
 async def get_prompt(request):
     pid = request.match_info["id"]
-    for p in CUSTOM_PROBLEMS:
+    lang = _request_lang(request)
+    for p in _custom_problems_for(lang):
         if p.name == pid:
             return web.json_response({"id": p.name, "prompt": p.prompt})
-    for p in _problems():
-        if p.name == pid:
-            return web.json_response({"id": p.name, "prompt": p.prompt})
+    if lang == "rust":
+        for p in _problems():
+            if p.name == pid:
+                return web.json_response({"id": p.name, "prompt": p.prompt})
     return web.json_response({"error": "not found"}, status=404)
 
 
@@ -192,6 +385,14 @@ async def _run_generation(req: dict, emit) -> None:
     try:
         prompt = req["prompt"]
         verifier = req.get("verifier", "cargo")
+        # Backward compat: clients that don't send a `language` field get
+        # Rust (the only language pre-multilingual). Validate against the
+        # supported set and fall back to "rust" on unknown values so a
+        # typo doesn't fail the run.
+        language = (req.get("language") or "rust").lower()
+        if language not in SUPPORTED_LANGS:
+            language = "rust"
+        mode_tag = _normalize_mode(verifier)
         model = req.get("model", "mistral-small3.2:24b")
         token_delay_ms = int(req.get("token_delay_ms", 0))
         instruct = bool(req.get("instruct", False))
@@ -219,6 +420,22 @@ async def _run_generation(req: dict, emit) -> None:
     if mode_active == OrchestrationMode.TWO_PHASE and template_for_model(model) is None:
         mode_active = OrchestrationMode.RAW
 
+    # When `instruct on rollback` is on AND the active orchestration mode is
+    # one of the thinking modes, the model gets BOTH an instructive cargo-
+    # error comment in the rolled-back prompt AND a fresh thinking phase
+    # before re-attempting. The LlmServer detects this flag and skips its
+    # one-shot mode-flip; DemoClient detects it and re-runs phase-1 for
+    # TWO_PHASE specifically. R1 / C3 re-enter automatically via the next
+    # `_open_stream` call once the mode stops flipping.
+    reenter_thinking = (
+        instruct
+        and mode_active in (
+            OrchestrationMode.RAW_THINK_INJECT,
+            OrchestrationMode.TWO_PHASE,
+            OrchestrationMode.CHAT_INSTRUCTED,
+        )
+    )
+
     # Open a per-run JSONL log so the entire event stream can be replayed
     # post-hoc for diagnosis.
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -242,12 +459,15 @@ async def _run_generation(req: dict, emit) -> None:
         "iso_time": datetime.datetime.now().isoformat(),
         "request": {
             "prompt": prompt,
+            "language": language,
             "verifier": verifier,
+            "mode_tag": mode_tag,
             "model": model,
             "token_delay_ms": token_delay_ms,
             "instruct": instruct,
             "mode_requested": mode_requested.value,
             "mode_active": mode_active.value,
+            "reenter_thinking_on_rollback": reenter_thinking,
         },
     })
 
@@ -256,17 +476,79 @@ async def _run_generation(req: dict, emit) -> None:
         _write_log(event)
         await emit(event)
 
-    workspace = _ensure_workspace()
-    await emit_and_log({"type": "status", "phase": "loading", "message": "warming cargo cache", "log_path": str(log_path)})
-    await _warm_cargo(workspace)
+    # Resolve the dispatch entry for (language, mode_tag). If the user
+    # picked an unsupported combo (shouldn't happen — the UI restricts to
+    # the cells in the table) we surface a clean error rather than
+    # crashing.
+    dispatch = LANG_DISPATCH.get((language, mode_tag))
+    if dispatch is None:
+        await emit_and_log({
+            "type": "status", "phase": "error",
+            "message": f"unsupported combination: language={language}, mode={mode_tag}",
+        })
+        log_fp.close()
+        return
 
-    if verifier == "ra":
-        from soundcode.ra_check import RustAnalyzerChecker
-        await emit_and_log({"type": "status", "phase": "loading", "message": "starting rust-analyzer"})
-        checker = RustAnalyzerChecker(workspace=workspace, settle_s=1.5)
-        await asyncio.to_thread(checker.start)
+    tool = dispatch["tool"]
+    if not _tool_available(tool):
+        hint = _INSTALL_HINTS.get(tool, f"required tool `{tool}` missing")
+        await emit_and_log({
+            "type": "status", "phase": "error",
+            "message": hint,
+        })
+        log_fp.close()
+        return
+
+    # Materialize the workspace (idempotent for Rust's persistent dir;
+    # fresh tempdir for the others). Then wire up checker + boundary.
+    workspace_obj = dispatch["workspace_factory"]()
+    workspace_path = workspace_obj.setup()
+    boundary = dispatch["boundary_cls"]()
+
+    await emit_and_log({
+        "type": "status", "phase": "loading",
+        "message": f"setting up {language} workspace at {workspace_path}",
+        "log_path": str(log_path),
+    })
+
+    # Rust-specific warmup: the cargo incremental cache benefits from a
+    # pre-flight `cargo check --offline`. Other languages don't need this.
+    if language == "rust":
+        await _warm_cargo(workspace_path)
+
+    if mode_tag == "lsp":
+        await emit_and_log({
+            "type": "status", "phase": "loading",
+            "message": f"starting LSP backend ({tool})",
+        })
+        try:
+            checker = dispatch["checker_cls"](workspace=workspace_path)
+        except Exception as e:
+            await emit_and_log({
+                "type": "status", "phase": "error",
+                "message": f"could not construct {tool} checker: {e!r}",
+            })
+            log_fp.close()
+            return
+        try:
+            await asyncio.to_thread(checker.start)
+        except Exception as e:
+            await emit_and_log({
+                "type": "status", "phase": "error",
+                "message": f"{tool} failed to start: {e!r}",
+            })
+            log_fp.close()
+            return
     else:
-        checker = CargoChecker(workspace=workspace)
+        try:
+            checker = dispatch["checker_cls"](workspace=workspace_path)
+        except Exception as e:
+            await emit_and_log({
+                "type": "status", "phase": "error",
+                "message": f"could not construct {tool} checker: {e!r}",
+            })
+            log_fp.close()
+            return
 
     await emit_and_log({"type": "status", "phase": "loading", "message": f"connecting to ollama / {model}"})
     # The actual load (weights → VRAM) happens lazily inside Ollama on the
@@ -293,6 +575,7 @@ async def _run_generation(req: dict, emit) -> None:
             max_tokens=-1,
             stop=stop_patterns,
             mode=mode_active,
+            reenter_thinking_on_rollback=reenter_thinking,
         ),
     )
 
@@ -313,6 +596,7 @@ async def _run_generation(req: dict, emit) -> None:
             token_delay_s=token_delay_ms / 1000.0,
         ),
         emit=emit_and_log,
+        boundary=boundary,
     )
 
     await emit_and_log({"type": "status", "phase": "ready", "message": "model ready, starting generation"})
@@ -329,11 +613,18 @@ async def _run_generation(req: dict, emit) -> None:
             await llm.close()
         except Exception:
             pass
-        if verifier == "ra":
+        if mode_tag == "lsp":
             try:
                 await asyncio.to_thread(checker.stop)
             except Exception:
                 pass
+        # Workspace teardown: Rust's `RustWorkspace.teardown()` is a no-op
+        # (persistent dir for incremental cache); the others remove their
+        # tempdirs. Calling teardown unconditionally is safe.
+        try:
+            workspace_obj.teardown()
+        except Exception:
+            pass
         _write_log({"type": "session_end"})
         log_fp.close()
 

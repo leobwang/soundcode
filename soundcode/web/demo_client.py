@@ -16,6 +16,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from soundcode.code import Category, Code, State
+from soundcode.lang.boundary import BoundaryDetector
+from soundcode.lang.rust import RustBoundaryDetector
 from soundcode.llm import LlmServer, OrchestrationMode
 
 EmitFn = Callable[[dict], Awaitable[None]]
@@ -57,11 +59,60 @@ class DemoConfig:
 
 
 class DemoClient:
-    def __init__(self, llm: LlmServer, checker, *, config: DemoConfig, emit: EmitFn):
+    def __init__(self, llm: LlmServer, checker, *, config: DemoConfig, emit: EmitFn,
+                 boundary: BoundaryDetector | None = None):
         self.llm = llm
         self.checker = checker
         self.config = config
         self.emit = emit
+        # Per-language boundary detector. Phase 0 defaults to Rust (the only
+        # language) so the existing constructor signature (llm, checker, config,
+        # emit) stays source-compatible. Phase 1+ will pass a per-language
+        # detector here and thread it down into `Code` (today `Code` calls
+        # `soundcode.eval.boundary.find_boundaries` directly — the alternative
+        # was to add a new `boundary=` kwarg to `Code` and rewire all its
+        # callers/tests, which is bigger than Phase 0 should be).
+        self.boundary: BoundaryDetector = boundary or RustBoundaryDetector()
+
+    async def _run_two_phase_thinking(self, prompt: str, *,
+                                       status_message: str) -> str:
+        """TWO_PHASE phase-1: stream a chat-template-wrapped thinking trace
+        and bake it into the prompt as a Rust-comment block. Returns the
+        augmented prompt (unchanged if no trace was produced — e.g., the
+        model lacks a known chat template).
+
+        Used both at the start of `generate()` (initial phase 1) and from
+        `_do_rollback` when reenter-thinking-on-rollback is active (each
+        rollback gets a fresh phase-1 conditioned on the rolled-back state,
+        including the instructive error comment).
+        """
+        await self.emit({
+            "type": "status", "phase": "generating",
+            "message": status_message,
+        })
+        thinking_chunks: list[str] = []
+        emitted_open = False
+        async for tok in self.llm.stream_thinking_phase(prompt):
+            if not emitted_open:
+                await self.emit({"type": "token_emitted",
+                                 "kind": "think", "text": "<think>"})
+                emitted_open = True
+            thinking_chunks.append(tok.text)
+            await self.emit({"type": "token_emitted",
+                             "kind": "think", "text": tok.text})
+        if emitted_open:
+            await self.emit({"type": "token_emitted",
+                             "kind": "think", "text": "</think>"})
+        trace = "".join(thinking_chunks).strip()
+        if not trace:
+            return prompt
+        commented = "\n".join("    // " + line for line in trace.splitlines())
+        return (
+            prompt
+            + "\n    // ───── reasoning ─────\n"
+            + commented
+            + "\n    // ─────────────────────\n    "
+        )
 
     async def generate(self, prompt: str) -> str:
         code = Code(prefix=prompt, suffix="}", checker=self.checker)
@@ -97,6 +148,23 @@ class DemoClient:
             await self.llm.abort_current_stream()
             await _close_think_if_open()
             new_prompt = prompt + code.content_up_to(survivor_offset) + suffix_msg
+            # Re-enter thinking for TWO_PHASE when reenter-thinking is on.
+            # `_open_stream` already handles R1 / C3 re-entry transparently
+            # (it stops flipping the mode to RAW when the flag is set), but
+            # TWO_PHASE's phase-1 lives in DemoClient — we re-run it here so
+            # each rollback gets fresh chain-of-thought conditioned on the
+            # instructive error comment + surviving prefix. R1 / C3 do not
+            # need this branch because their thinking re-enters
+            # automatically through the next `_open_stream` call.
+            if (self.llm.config.reenter_thinking_on_rollback
+                    and self.llm.config.mode == OrchestrationMode.TWO_PHASE):
+                new_prompt = await self._run_two_phase_thinking(
+                    new_prompt,
+                    status_message=(
+                        f"re-thinking on rollback #{rollbacks} "
+                        f"({reason})"
+                    ),
+                )
             self.llm.set_prompt(new_prompt)
             code.rollback(to_offset=survivor_offset)
             window_hashes.clear()
@@ -119,43 +187,17 @@ class DemoClient:
         await self.emit({"type": "reset_buffer"})
 
         # ── TWO_PHASE phase 1 ──────────────────────────────────────────
-        # Stream the thinking trace from a chat-template-wrapped raw call,
-        # display it in the LLM pane as kind="think", then bake the trace
-        # into the prompt as a `// reasoning` comment block. The main
-        # producer loop then runs phase 2 (raw code completion) on the
-        # augmented prompt, with the thinking visible to the model as
-        # comment context. Phase 1 is a no-op if the model lacks a known
-        # chat template (e.g., currently any non-Qwen3 family).
+        # Initial phase-1 thinking — chat-template-wrapped raw call with
+        # stop=["</think>"] harvests a thinking trace, baked into the prompt
+        # as a Rust-comment block before the main producer loop runs.
+        # See `_run_two_phase_thinking`. Re-run from `_do_rollback` when
+        # reenter-thinking-on-rollback is active.
         if self.llm.config.mode == OrchestrationMode.TWO_PHASE:
-            await self.emit({
-                "type": "status", "phase": "generating",
-                "message": "phase 1 of 2: streaming thinking trace",
-            })
-            thinking_chunks: list[str] = []
-            emitted_open = False
-            async for tok in self.llm.stream_thinking_phase(prompt):
-                if not emitted_open:
-                    await self.emit({"type": "token_emitted",
-                                     "kind": "think", "text": "<think>"})
-                    emitted_open = True
-                thinking_chunks.append(tok.text)
-                await self.emit({"type": "token_emitted",
-                                 "kind": "think", "text": tok.text})
-            if emitted_open:
-                await self.emit({"type": "token_emitted",
-                                 "kind": "think", "text": "</think>"})
-            trace = "".join(thinking_chunks).strip()
-            if trace:
-                commented = "\n".join("    // " + line for line in trace.splitlines())
-                augmented = (
-                    prompt
-                    + "\n    // ───── reasoning ─────\n"
-                    + commented
-                    + "\n    // ─────────────────────\n    "
-                )
-                prompt = augmented
-                code.prefix = prompt
-                self.llm.set_prompt(prompt)
+            prompt = await self._run_two_phase_thinking(
+                prompt, status_message="phase 1 of 2: streaming thinking trace",
+            )
+            code.prefix = prompt
+            self.llm.set_prompt(prompt)
             await self.emit({
                 "type": "status", "phase": "generating",
                 "message": "phase 2 of 2: streaming code",
