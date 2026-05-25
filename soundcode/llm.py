@@ -128,9 +128,19 @@ class GenerationConfig:
 @dataclass
 class Token:
     """One streamed unit. `kind` distinguishes thinking tokens (which must NOT
-    be appended to the code buffer) from code tokens (the real continuation)."""
+    be appended to the code buffer) from code tokens (the real continuation).
+
+    Optional fields `token_id` and `entropy` carry sampler-level information
+    for processors that want it (notably ROCODE's trie, which records token
+    + entropy per node). The Ollama path doesn't expose these (HTTP API hides
+    them), so both default to None — consumers must treat them as optional.
+    The vLLM path may populate them in a future patch; for now the trie
+    bookkeeping uses a text-hash fallback when `token_id` is None.
+    """
     text: str
-    kind: str = "code"   # "code" | "think"
+    kind: str = "code"           # "code" | "think"
+    token_id: int | None = None  # vocab id when known; None for Ollama
+    entropy: float | None = None # H_t when computed; None for Ollama
 
     def __bool__(self) -> bool:
         return bool(self.text)

@@ -449,11 +449,12 @@ a { color: var(--accent); }
   box-shadow: 0 0 0 1px var(--accent-soft), 0 8px 24px rgba(0,0,0,0.4);
 }
 
-/* ─── demo controls bar (status pill) ─────────────── */
+/* ─── demo controls bar (status pill + backend stats) ───── */
 #demo-controls-bar {
   max-width: 920px; margin: 0 auto 8px; padding: 0 32px;
-  display: flex; justify-content: flex-end;
+  display: flex; justify-content: flex-end; align-items: center;
   flex: 0 0 auto;
+  gap: 12px;
 }
 .status {
   font-size: 12px; padding: 5px 12px; border-radius: 999px;
@@ -467,6 +468,34 @@ a { color: var(--accent); }
 .status.generating { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 .status.done       { background: var(--surface-2);  color: var(--text-dim); }
 .status.error      { background: var(--error-bg);   color: var(--error);   border-color: var(--error); }
+.status.warning    { background: var(--warning-bg); color: var(--warning); border-color: var(--warning); }
+
+/* Backend-stats inline panel — sits next to the status pill. Visible only
+ * when the backend reports KV-cache numbers (vLLM populates BackendStats
+ * via `last_stats`; Ollama doesn't, so the panel stays hidden there). */
+.backend-stats {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-size: 11px;
+  padding: 5px 11px; border-radius: 999px;
+  background: var(--surface); color: var(--text-dim);
+  border: 1px solid var(--border);
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.02em;
+}
+.backend-stats .bs-label {
+  color: var(--text-muted); text-transform: uppercase; font-size: 10px;
+}
+.backend-stats .bs-field { color: var(--text-dim); }
+.backend-stats .bs-key {
+  color: var(--text-muted); font-weight: 600;
+}
+.backend-stats #bs-hit-pct { color: var(--success); font-weight: 600; }
+.backend-stats #bs-ttft    { color: var(--accent);  font-weight: 600; }
+.bs-rollback-badge {
+  background: var(--accent-soft); color: var(--accent);
+  padding: 1px 6px; border-radius: 4px; font-size: 10px;
+  border: 1px solid var(--accent);
+}
 
 /* ─── settings | prompt row (50/50 split, full page width) ─── */
 #settings-prompt-row {

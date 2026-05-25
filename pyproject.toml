@@ -27,6 +27,11 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = [
+    "slow: marks tests that load real models / take >10s (run with '-m slow')",
+    "gpu: tests requiring a real GPU (skipped unless RUN_GPU_TESTS=1 is set)",
+]
+addopts = "-m 'not slow'"
 
 [build-system]
 requires = ["setuptools>=68"]

@@ -141,6 +141,61 @@ These three patches let the training cell launch cleanly. The headline cell —
 `deepseek-coder-1.3b × SemDiff (Python)` — is verified producing loss in the
 log; see `RUN_REPORT.md` for the PID and log path.
 
+#### 2026-05-24 — validation-loader bug + resume-from-checkpoint (claude-code)
+
+The 2026-05-24_115641 run completed epoch 1 (10,113 steps, loss 0.69 → 0.68)
+and saved `checkpoinss/0/model_0.bin`, then crashed in `validation_multigpu`
+with `TypeError: object of type 'NoneType' has no len()` at run.py:83.
+
+**7. `critic/run.py` — construct validation_set / testing_set on demand.**
+Upstream's `main()` hardcoded `validation_set = testing_set = None` in every
+branch, so `validation_loader` was always `None` even when `--do_eval=1`.
+`DatasetCA` already accepts `data_type='valid'` and `data_type='test'`; the
+fix is just to build them when the corresponding flag is set:
+
+```python
+validation_set = DatasetCA(args, tokenizer, MAX_LEN, data_type='valid') if args.do_eval else None
+testing_set    = DatasetCA(args, tokenizer, MAX_LEN, data_type='test')  if args.do_test else None
+```
+
+The `valid.json` / `test.json` files at `data/SemDiff/{valid,test}.json` are
+already in the schema `DatasetCA` expects (they have a `text` column and
+`pos_code`/`neg_code` columns, so the `if 'pos_code' in self.data.columns:`
+branch fires and yields 2 × N examples). Dry-run row counts:
+
+- valid: 4742 (= 2 × 2371)
+- test:  3582 (= 2 × 1791)
+
+The `valid1/` / `test1/` per-example dirs (the prior agent's hypothesis) are
+**not** consumed by `critic/data_utils.py` at all — only `Datasets/` /
+`generate_sem.py` use those. So no symlinking / dir-fabrication was needed.
+
+**8. `critic/run.py` — added `--resume_from_checkpoint` and `--start_epoch`.**
+Upstream has no resume flag. Added two CLI args and a load block right after
+`accelerator.prepare(model, optimizer)`:
+
+```python
+parser.add_argument('--resume_from_checkpoint', default='', type=str, ...)
+parser.add_argument('--start_epoch', default=0, type=int, ...)
+...
+if args.resume_from_checkpoint:
+    state_dict = torch.load(args.resume_from_checkpoint, map_location='cpu')
+    unwrapped = accelerator.unwrap_model(model)
+    unwrapped.load_state_dict(state_dict, strict=False)
+```
+
+Also threaded `args.start_epoch` through both training loops so the epoch
+counter and `checkpoinss/<epoch>/model_<epoch>.bin` paths line up with the
+prior run (resumed run starts at epoch=1, writes `checkpoinss/1/...`,
+`checkpoinss/2/...`, etc.):
+
+```python
+for epoch in range(args.start_epoch, args.start_epoch + args.epochs):
+```
+
+This is the minimum patch needed to resume the 2026-05-24_115641 run from
+`checkpoinss/0/model_0.bin` for the remaining 19 epochs.
+
 #### 2026-05-24 — SemDiff data extraction (claude-code)
 
 Extracted `upstream/data/SemDiff.rar` and `upstream/data/SemDiff-Java.rar`

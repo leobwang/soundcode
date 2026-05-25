@@ -141,12 +141,25 @@ class Code:
     See draft-plan-0.md §3.4 for the state machine.
     """
 
-    def __init__(self, *, prefix: str, suffix: str, checker: "CargoChecker") -> None:
+    def __init__(
+        self,
+        *,
+        prefix: str,
+        suffix: str,
+        checker: "CargoChecker",
+        function_closer: str = "\n    unreachable!()\n}\n\nfn main() {}\n",
+    ) -> None:
         # `prefix` is the prompt/function signature already on disk.
         # `suffix` is what closes the function (the test harness etc.)
         # — only used for the FINAL cargo-check; not for in-loop checks.
+        # `function_closer` is the per-language source-tail glued onto the
+        # snapshot inside `check()` so the surface fed to the checker is a
+        # syntactically complete file. Default is the Rust shim (preserves
+        # historic behaviour for Rust callers); the multilingual web demo
+        # supplies the per-language closer from `web.server.LANG_CLOSER`.
         self.prefix = prefix
         self.suffix = suffix
+        self.function_closer = function_closer
         self.content = ""             # what the LM has generated so far
         self.state: State = State.INACTIVE
         self.diagnostics: list[Diagnostic] = []
@@ -288,11 +301,16 @@ class Code:
         self.checks_run += 1
         try:
             self.lsp_calls += 1
-            # Use `unreachable!()` as a universal-return shim so the
-            # function-signature return type is always satisfied — leaves
-            # only *in-content* errors visible.
+            # `function_closer` is the per-language source-tail glued onto
+            # the snapshot so the surface fed to the checker is a complete
+            # file. For Rust (the historical default) this is the
+            # `unreachable!()` shim that satisfies any return type while
+            # leaving only *in-content* errors visible; for the multilingual
+            # web demo the per-language closer comes from `LANG_CLOSER` in
+            # `soundcode.web.server` (e.g. `\n    return {};\n}\n\nint
+            # main() { return 0; }\n` for C++).
             diagnostics = await self._checker.check(
-                self.prefix + snapshot + "\n    unreachable!()\n}\n\nfn main() {}\n"
+                self.prefix + snapshot + self.function_closer
             )
         except asyncio.CancelledError:
             raise

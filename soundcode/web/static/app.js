@@ -7,6 +7,8 @@ const wsStatusEl     = $("ws-status");
 const promptSelect   = $("prompt-select");
 const langSelect     = $("lang-select");
 const verifierSelect = $("verifier-select");
+const backendSelect  = $("backend-select");
+const algorithmSelect = $("algorithm-select");
 const modelSelect    = $("model-select");
 const cadenceInput   = $("cadence");
 const cadenceLabel   = $("cadence-label");
@@ -110,6 +112,17 @@ const pipeLspBlock   = $("pipe-lsp-block");
 const tokenCounter   = $("token-counter");
 const rollbackCounter = $("rollback-counter");
 const checkpointCounter = $("checkpoint-counter");
+
+// Backend-stats panel (next to the status pill). Populated from the
+// `backend_stats` WS event so the demo can show vLLM's KV-cache hit rate +
+// TTFT — the headline number for the rollback-resume speedup story.
+// Ollama backends never emit `backend_stats`, so the panel stays hidden.
+const backendStatsEl   = $("backend-stats");
+const bsHitPctEl       = $("bs-hit-pct");
+const bsCachedEl       = $("bs-cached");
+const bsPrefixEl       = $("bs-prefix");
+const bsTtftEl         = $("bs-ttft");
+const bsRollbackBadgeEl = $("bs-rollback-badge");
 
 // ─── state ─────────────────────────────────────────────────────────────
 const state = {
@@ -755,6 +768,32 @@ function handleEvent(ev) {
       }
       break;
     }
+    case "backend_stats":
+      // KV-cache evidence from the vLLM backend. Reveal the panel on first
+      // event; update every ~32 tokens / every rollback thereafter.
+      if (backendStatsEl) {
+        backendStatsEl.hidden = false;
+        if (bsHitPctEl) {
+          const pct = (ev.cache_hit_pct != null) ? ev.cache_hit_pct.toFixed(1) : "—";
+          bsHitPctEl.textContent = `${pct}%`;
+        }
+        if (bsCachedEl) bsCachedEl.textContent = (ev.cached_tokens != null) ? String(ev.cached_tokens) : "—";
+        if (bsPrefixEl) bsPrefixEl.textContent = (ev.prefix_tokens != null) ? String(ev.prefix_tokens) : "—";
+        if (bsTtftEl) {
+          if (ev.ttft_s != null) {
+            const ms = ev.ttft_s * 1000;
+            bsTtftEl.textContent = ms < 1000
+              ? `${ms.toFixed(0)} ms`
+              : `${(ms / 1000).toFixed(2)} s`;
+          } else {
+            bsTtftEl.textContent = "—";
+          }
+        }
+        if (bsRollbackBadgeEl) {
+          bsRollbackBadgeEl.hidden = !ev.is_rollback;
+        }
+      }
+      break;
     case "error":
       setStatus("error", ev.message || "error");
       logLsp("error", ev.message, null, "ERROR");
@@ -782,6 +821,13 @@ function resetUi() {
   lspBody.innerHTML = "";
   llmStack.innerHTML = "";
   if (pipelineTrack) pipelineTrack.innerHTML = "";
+  // Hide the backend-stats panel until the next backend_stats event
+  // arrives — Ollama runs never populate it, so the panel should not
+  // linger with stale numbers from a previous vLLM run.
+  if (backendStatsEl) {
+    backendStatsEl.hidden = true;
+    if (bsRollbackBadgeEl) bsRollbackBadgeEl.hidden = true;
+  }
   setStatus("idle", "");
 }
 
@@ -795,6 +841,12 @@ function onStart() {
     prompt,
     language: currentLang(),
     verifier: verifierSelect.value,
+    // Back-compat defaults if the new selectors aren't in the DOM (e.g. an
+    // older index.html cached in the browser): server reads "ollama" /
+    // "soundcode" when these fields are missing, so we don't have to
+    // bother sending them — but we do, for the explicit-config log entry.
+    backend: backendSelect ? backendSelect.value : "ollama",
+    algorithm: algorithmSelect ? algorithmSelect.value : "soundcode",
     model: modelSelect.value,
     token_delay_ms: parseInt(cadenceInput.value, 10) || 0,
     instruct: instructCheck.checked,

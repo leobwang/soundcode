@@ -5,6 +5,13 @@ Wraps the same producer-consumer loop as `soundcode.client.CodeClient`,
 but adds:
   - `emit(event_dict)` hook called at every loop interest point.
   - Optional throttling per emitted token (for slow/visual demos).
+  - Side-channel polls for SemGuard (per-line rollback signals from a trained
+    evaluator) and bookkeeping for ROCODE's trie-backed processor
+    (per-token state advancement + post-rollback penalty application).
+  - Backend-stats forwarding: if the backend exposes `last_stats`
+    (VllmBackend's BackendStats), we periodically emit `backend_stats`
+    events carrying prefix length, KV-cache hit rate, and TTFT — the demo
+    UI surfaces these as a "cache hit / TTFT" panel below the controls.
 """
 
 from __future__ import annotations
@@ -19,6 +26,18 @@ from soundcode.code import Category, Code, State
 from soundcode.lang.boundary import BoundaryDetector
 from soundcode.lang.rust import RustBoundaryDetector
 from soundcode.llm import LlmServer, OrchestrationMode
+# Processor-type imports for the isinstance dispatch in the producer loop.
+# Each processor has a fundamentally different post-token bookkeeping
+# contract — abstracting them behind a base class would push the
+# orchestration logic into the processors themselves (which would then need
+# to know about `code.ckpt`, `_do_rollback`, etc.). Keeping the dispatch
+# explicit at this layer is simpler and survives the case where a future
+# processor type is added with yet another contract.
+from soundcode.logits_processors import (
+    RollbackRequest,
+    SemGuardEvaluatorProcessor,
+)
+from soundcode.rocode_processor import RocodeTriePenaltyProcessor
 
 EmitFn = Callable[[dict], Awaitable[None]]
 
@@ -60,7 +79,8 @@ class DemoConfig:
 
 class DemoClient:
     def __init__(self, llm: LlmServer, checker, *, config: DemoConfig, emit: EmitFn,
-                 boundary: BoundaryDetector | None = None):
+                 boundary: BoundaryDetector | None = None,
+                 function_closer: str = "\n    unreachable!()\n}\n\nfn main() {}\n"):
         self.llm = llm
         self.checker = checker
         self.config = config
@@ -73,6 +93,78 @@ class DemoClient:
         # was to add a new `boundary=` kwarg to `Code` and rewire all its
         # callers/tests, which is bigger than Phase 0 should be).
         self.boundary: BoundaryDetector = boundary or RustBoundaryDetector()
+        # Per-language source-tail glued onto generated content before
+        # handing it to the checker. Default = the historical Rust shim
+        # (`unreachable!()` + `fn main() {}`) so Rust callers stay byte-
+        # identical; the multilingual web demo passes its per-language
+        # closer from `soundcode.web.server.LANG_CLOSER`. Threaded down
+        # into `Code` (in-loop check) AND used directly in
+        # `_emit_final_check` (post-hoc check on full body).
+        self.function_closer = function_closer
+
+    # ─── processor-aware helpers (used by both `generate` + continuation) ─
+    #
+    # The three processor types we may have on `self.llm.logits_processor`
+    # have fundamentally different post-token bookkeeping contracts:
+    #
+    #   - NoopLogitsProcessor          (SoundCode default): nothing to do.
+    #   - RocodeTriePenaltyProcessor   (faithful ROCODE): must call
+    #       `record_emitted_token(token_id, entropy)` after every code
+    #       token, AND after each rollback must apply the decayed penalty
+    #       along the abandoned path + move the trie cursor.
+    #   - SemGuardEvaluatorProcessor   (SemGuard): polls a per-line
+    #       evaluator score off an `asyncio.Queue`; if a low-score signal
+    #       lands, trigger a structural rollback to before the failing line.
+    #
+    # The MVP RocodeDecayingPenaltyProcessor doesn't need any of this; its
+    # state is driven externally from `_do_rollback` only when the caller
+    # opts in (the web demo today doesn't, so the MVP processor's
+    # `add_penalty` API is exercised by the eval scripts, not here).
+
+    def _active_rocode_trie_processor(self) -> RocodeTriePenaltyProcessor | None:
+        """Return the active processor if it's the trie-backed ROCODE one,
+        else None. Both vLLM and Ollama backends store the processor on
+        `llm.logits_processor`; for Ollama the processor is constructed for
+        API symmetry but never actually invoked by the sampler, so its
+        bookkeeping is moot. We still update it for consistency."""
+        proc = getattr(self.llm, "logits_processor", None)
+        if isinstance(proc, RocodeTriePenaltyProcessor):
+            return proc
+        return None
+
+    def _active_semguard_processor(self) -> SemGuardEvaluatorProcessor | None:
+        """Return the active processor if it's the SemGuard one, else None."""
+        proc = getattr(self.llm, "logits_processor", None)
+        if isinstance(proc, SemGuardEvaluatorProcessor):
+            return proc
+        return None
+
+    async def _emit_backend_stats(self) -> None:
+        """If the backend exposes `last_stats` (VllmBackend.BackendStats),
+        emit a `backend_stats` event so the UI can update its KV-cache
+        panel. No-op for backends that don't have it (Ollama)."""
+        stats = getattr(self.llm, "last_stats", None)
+        if stats is None:
+            return
+        prefix_tokens = int(getattr(stats, "prefix_tokens", 0) or 0)
+        cached_tokens = int(getattr(stats, "cached_tokens", 0) or 0)
+        ttft_s = getattr(stats, "ttft_s", None)
+        is_rollback = bool(getattr(stats, "is_rollback", False))
+        # Suppress emissions until vLLM has filled in at least the prefix
+        # length — pre-first-output stats are all zeros, which would
+        # repeatedly clobber a meaningful prior reading on the UI.
+        if prefix_tokens == 0:
+            return
+        cache_hit_pct = (cached_tokens / max(prefix_tokens, 1)) * 100.0
+        await self.emit({
+            "type": "backend_stats",
+            "prefix_tokens": prefix_tokens,
+            "cached_tokens": cached_tokens,
+            "cache_hit_pct": round(cache_hit_pct, 2),
+            "ttft_s": ttft_s,
+            "is_rollback": is_rollback,
+            "last_request_id": getattr(stats, "last_request_id", None),
+        })
 
     async def _run_two_phase_thinking(self, prompt: str, *,
                                        status_message: str) -> str:
@@ -115,7 +207,8 @@ class DemoClient:
         )
 
     async def generate(self, prompt: str) -> str:
-        code = Code(prefix=prompt, suffix="}", checker=self.checker)
+        code = Code(prefix=prompt, suffix="}", checker=self.checker,
+                    function_closer=self.function_closer)
         tasks: deque[asyncio.Task] = deque()
         self.llm.set_prompt(prompt)
         rollbacks = 0
@@ -168,6 +261,41 @@ class DemoClient:
             self.llm.set_prompt(new_prompt)
             code.rollback(to_offset=survivor_offset)
             window_hashes.clear()
+            # Faithful-ROCODE bookkeeping: mark the abandoned tail as a failed
+            # terminal in the trie, then walk it back to the survivor depth
+            # AND apply the decayed penalty along the discarded path. We
+            # don't try to compute trie-depth here precisely (the trie
+            # operates in token-depth, but `survivor_offset` is char-depth
+            # in `code.content`); instead, we use the trie's own cursor
+            # depth at rollback time. This is the same convention upstream
+            # uses: rollback by trie-depth, not by source-offset.
+            rocode_proc = self._active_rocode_trie_processor()
+            if rocode_proc is not None:
+                try:
+                    rocode_proc.mark_error()
+                    # The trie's `cursor.depth` is the current attempt's
+                    # leaf depth (tokens emitted since prompt). We don't
+                    # have a precise mapping from `survivor_offset`
+                    # (characters) to trie-depth (tokens), so we use the
+                    # MVP heuristic: roll back proportional to how much of
+                    # the buffer survived. This is approximate but conserves
+                    # the contract that lower depths = less rolled back.
+                    cur_depth = rocode_proc.trie.cursor.depth
+                    discarded_chars = max(0, len(discarded))
+                    total_chars = max(1, len(discarded) + len(code.content))
+                    discarded_frac = discarded_chars / total_chars
+                    estimated_discarded_tokens = max(
+                        1, int(round(cur_depth * discarded_frac))
+                    )
+                    rollback_depth = max(0, cur_depth - estimated_discarded_tokens)
+                    rocode_proc.rollback_and_penalize(rollback_depth)
+                except Exception as e:
+                    # Trie bookkeeping is best-effort — don't let a math
+                    # mismatch crash the rollback path. Log and continue.
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        "ROCODE trie rollback bookkeeping failed: %r", e,
+                    )
             # Snapshot reflects the *post-rollback* buffer (the surviving
             # prefix only — discarded slice is excluded). Verdict-error
             # entries still show the pre-error state at `offset_at_check`;
@@ -182,6 +310,10 @@ class DemoClient:
                 "reason": reason,
                 "code_snapshot": post_rollback_snapshot,
             })
+            # Surface KV-cache stats on every rollback so the UI can show
+            # the prefix-cache hit rate of the resumed stream. The next
+            # token's TTFT will be the headline number for cache reuse.
+            await self._emit_backend_stats()
             return rollbacks
 
         await self.emit({"type": "reset_buffer"})
@@ -226,7 +358,22 @@ class DemoClient:
             """Route one Token from the LM to the UI, applying token_delay.
             Returns True iff the token was a code token (= worth running the
             body_closed / watchdog / boundary checks after). Thinking tokens
-            never advance `code.content`."""
+            never advance `code.content`.
+
+            Side effects on processor state:
+              - Faithful-ROCODE: every code token advances the trie cursor
+                via `record_emitted_token(token_id, entropy)`. We use the
+                token's text-hash as a fallback when the backend doesn't
+                supply a vocab id (Ollama path), and 0.0 entropy when the
+                backend doesn't supply it (also Ollama). The trie's
+                Strategic Rollback decider's argmax-on-entropy degrades
+                gracefully under all-zero entropy (it picks the shallowest
+                tied node).
+              - SemGuard: nothing here — SemGuard observes the raw vLLM
+                token stream inside the sampler, not at this layer. The
+                consumer loop polls `processor.rollback_signals` between
+                tokens to act on its signals.
+            """
             if self.config.token_delay_s > 0:
                 await asyncio.sleep(self.config.token_delay_s)
             if token.kind == "think":
@@ -254,6 +401,24 @@ class DemoClient:
                 "text": token.text,
                 "offset": len(code.content),
             })
+            # Faithful-ROCODE trie advance — best-effort. We can't easily
+            # reconstruct the vocab id from the Ollama HTTP path (it returns
+            # only decoded text), so fall back to a text hash for trie
+            # node-identity. The trie still works correctly because
+            # equal-text tokens at the same position will reuse the same
+            # node (penalties accumulate as designed); only the absolute
+            # `token_id` field becomes synthetic.
+            rocode_proc = self._active_rocode_trie_processor()
+            if rocode_proc is not None:
+                tid = token.token_id if token.token_id is not None else hash(token.text) & 0xFFFFFFFF
+                entropy = token.entropy if token.entropy is not None else 0.0
+                try:
+                    rocode_proc.record_emitted_token(token_id=tid, entropy=entropy)
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        "ROCODE trie record_emitted_token failed: %r", e,
+                    )
             return True
 
         while True:
@@ -270,6 +435,13 @@ class DemoClient:
                 token = await self.llm.next()
                 if token:
                     is_code = await _emit_token(token)
+                    # Periodically forward backend stats so the UI's
+                    # KV-cache panel updates as TTFT lands + cached_tokens
+                    # accumulates. Every 32 tokens is enough for a smooth
+                    # display without overwhelming the WS. Also emit on
+                    # every rollback (see `_do_rollback`).
+                    if len(code.content) > 0 and len(code.content) % 32 == 0:
+                        await self._emit_backend_stats()
                     if not is_code:
                         # Thinking token — skip the structural / watchdog /
                         # boundary checks; they all operate on `code.content`.
@@ -381,6 +553,46 @@ class DemoClient:
                     await _do_rollback(suffix_msg, reason="cargo_error",
                                        survivor_offset=survivor)
                     break
+
+            # 2b. SemGuard side-channel: poll for low-score signals from the
+            # evaluator processor. SemGuard's __call__ runs inside vLLM's
+            # sampler (synchronous), so it pushes RollbackRequests onto an
+            # asyncio.Queue rather than triggering rollback directly. We
+            # poll the queue here, between tokens, alongside the cargo
+            # verdict consumer above. A signal is non-blocking and at most
+            # `max_resamples` will fire per generation.
+            semguard_proc = self._active_semguard_processor()
+            if semguard_proc is not None and semguard_proc.rollback_signals is not None:
+                try:
+                    signal: RollbackRequest = (
+                        semguard_proc.rollback_signals.get_nowait()
+                    )
+                except asyncio.QueueEmpty:
+                    signal = None
+                if signal is not None:
+                    # `prefix_len` is the CHARACTER length of the decoded
+                    # prefix at the moment the evaluator scored low. Map it
+                    # to a survivor offset in `code.content`: subtract the
+                    # original prompt length (the evaluator scores the full
+                    # prefix including prompt, but `code.content` is just
+                    # the model's generation). Then snap down to the most
+                    # recent checkpoint at or before that point, the same
+                    # convention the cargo-rollback path uses.
+                    char_in_content = max(0, signal.prefix_len - len(prompt))
+                    survivor = max(
+                        [c for c in code.ckpt if c < char_in_content] + [0]
+                    )
+                    suffix_msg = (
+                        "\n// previous line failed the SemGuard evaluator "
+                        f"(score={signal.score:.3f} < threshold); "
+                        "try a different approach.\n"
+                    )
+                    await _do_rollback(
+                        suffix_msg=suffix_msg,
+                        reason="semguard_low_score",
+                        survivor_offset=survivor,
+                    )
+                    continue
 
             # 3. Termination.
             if not self.llm.has_next():
@@ -565,9 +777,19 @@ class DemoClient:
                 "code_snapshot": content,
             })
             return False
+        # Glue the per-language closer onto `content` so the file fed to the
+        # checker is syntactically complete. The body_closed shortcut skips
+        # the closer when the model already emitted a trailing `}` itself —
+        # without it, the closer's own `}` would over-close and produce a
+        # spurious syntax error. For Python (no brace-based body) the
+        # `endswith("}")` heuristic is almost always False, so the closer
+        # (`\n    pass\n`) is appended as expected. Pre-fix this leaked the
+        # Rust-specific `\n\nfn main() {}\n` tail into every language's
+        # final-check source (`demo_client.py:570`); `self.function_closer`
+        # is now per-language (see `soundcode.web.server.LANG_CLOSER`).
         body_closed = content.rstrip().endswith("}")
-        closer = "" if body_closed else "\n}\n"
-        real_source = prompt + content + closer + "\n\nfn main() {}\n"
+        closer = "" if body_closed else self.function_closer
+        real_source = prompt + content + closer
         await self.emit({"type": "status", "phase": "generating",
                          "message": "running final post-hoc cargo check"})
         try:

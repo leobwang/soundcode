@@ -125,7 +125,10 @@ def run(args, model, tokenizer, optimizer, data_list):
                 length of training_loader {len(training_loader)}')
     if args.do_train:
         best_accf1 = 0
-        for epoch in range(args.epochs):
+        # 2026-05-24 patch (claude-code): respect args.start_epoch so resumed
+        # runs use the correct epoch index for output paths and don't clobber
+        # the prior run's checkpoint files.
+        for epoch in range(args.start_epoch, args.start_epoch + args.epochs):
             model.train()
 
             bar = tqdm(training_loader, total=len(training_loader), desc="Training")
@@ -295,11 +298,35 @@ def main(args):
     optimizer = torch.optim.Adam(params=model.parameters(), lr=args.lr)
     model, optimizer = accelerator.prepare(model, optimizer)
 
+    # 2026-05-24 patch (claude-code): load weights from a prior run's checkpoint
+    # if --resume_from_checkpoint is set. We unwrap the model first (mirroring
+    # the test-time load at the bottom of run() / run_gen()) so the keys line
+    # up regardless of DeepSpeed/DDP wrapping.
+    if args.resume_from_checkpoint:
+        ckpt_path = args.resume_from_checkpoint
+        if not os.path.isfile(ckpt_path):
+            raise FileNotFoundError(f"--resume_from_checkpoint not found: {ckpt_path}")
+        logger.info("Resuming from checkpoint: %s", ckpt_path)
+        state_dict = torch.load(ckpt_path, map_location='cpu')
+        unwrapped = accelerator.unwrap_model(model)
+        missing, unexpected = unwrapped.load_state_dict(state_dict, strict=False)
+        if missing:
+            logger.warning("Missing keys when loading checkpoint: %s", missing[:5])
+        if unexpected:
+            logger.warning("Unexpected keys when loading checkpoint: %s", unexpected[:5])
+        logger.info("Checkpoint loaded; resuming at epoch %d.", args.start_epoch)
+        del state_dict
 
     train_params = {'batch_size': TRAIN_BATCH_SIZE, 'shuffle': True, "drop_last": True}
     valid_params = {'batch_size': VALID_BATCH_SIZE, 'shuffle': True}
     test_params = {'batch_size': VALID_BATCH_SIZE, 'shuffle': False}
 
+    # 2026-05-24 patch (claude-code): upstream hardcoded validation_set =
+    # testing_set = None in every branch, which then crashed
+    # validation_multigpu(len(None)) when --do_eval=1. DatasetCA already
+    # supports data_type='valid' / 'test' (it tokenizes via the same path as
+    # 'train' but skips the rank-sharded caching). Construct them on demand
+    # so per-epoch validation works.
     if 'codet5ca' in args.load or 'deepseekca' in args.load or 'codebert' in args.load:
         if 'contrastive' in args.output_dir.lower():
             print("Prepare contrastive learning dataset......")
@@ -308,19 +335,17 @@ def main(args):
         else:
             print("Prepare single with cross attention samples dataset......")
             training_set = DatasetCA(args, tokenizer, MAX_LEN, data_type='train')
-            validation_set = testing_set = None
+            validation_set = DatasetCA(args, tokenizer, MAX_LEN, data_type='valid') if args.do_eval else None
+            testing_set = DatasetCA(args, tokenizer, MAX_LEN, data_type='test') if args.do_test else None
     else:
         print("Prepare single with cross attention samples dataset......")
         training_set = DatasetCA(args, tokenizer, MAX_LEN, data_type='train')
-        validation_set = testing_set = None
+        validation_set = DatasetCA(args, tokenizer, MAX_LEN, data_type='valid') if args.do_eval else None
+        testing_set = DatasetCA(args, tokenizer, MAX_LEN, data_type='test') if args.do_test else None
 
     training_loader = DataLoader(training_set, **train_params)
-    if validation_set and testing_set:
-        validation_loader = DataLoader(validation_set, **valid_params)
-        testing_loader = DataLoader(testing_set, **test_params)
-    else:
-        validation_loader = None
-        testing_loader = None
+    validation_loader = DataLoader(validation_set, **valid_params) if validation_set is not None else None
+    testing_loader = DataLoader(testing_set, **test_params) if testing_set is not None else None
 
     args.train_classifier = True
 
@@ -375,7 +400,8 @@ def run_gen(args, model, tokenizer, optimizer, data_list):
     args.do_train = True
     if args.do_train:
         best_accf1 = 0
-        for epoch in range(args.epochs):
+        # 2026-05-24 patch (claude-code): respect args.start_epoch (see run()).
+        for epoch in range(args.start_epoch, args.start_epoch + args.epochs):
             model.train()
             bar = tqdm(training_loader, total=len(training_loader), desc="Training")
             for idx, data in enumerate(bar):
@@ -480,6 +506,16 @@ if __name__ == "__main__":
     parser.add_argument('--do_eval', default
     =False, type=int)
     parser.add_argument('--do_test', default=False, type=float)
+    # 2026-05-24 patch (claude-code): added resume-from-checkpoint support.
+    # --resume_from_checkpoint is an absolute path to a model_*.bin emitted by
+    # an earlier run (e.g. checkpoinss/0/model_0.bin). --start_epoch sets the
+    # epoch counter so the resumed run writes checkpoinss/<start_epoch+i>/...
+    # and labels the per-epoch valid predictions correctly.
+    parser.add_argument('--resume_from_checkpoint', default='', type=str,
+                        help='Path to a model_*.bin produced by a previous run.')
+    parser.add_argument('--start_epoch', default=0, type=int,
+                        help='Epoch number to begin from (0-indexed); used for '
+                             'output paths so resumed runs do not clobber prior epochs.')
 
     args = parser.parse_args()
     os.makedirs(args.output_dir, exist_ok=True)

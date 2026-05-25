@@ -18,13 +18,15 @@ Events client->server:
   {"type": "stop"}
 
 Events server→client (see DemoClient for the full set):
-  {"type": "status", "phase": "loading"|"ready"|"generating"|"done", "message": str}
+  {"type": "status", "phase": "loading"|"ready"|"generating"|"done"|"warning", "message": str}
   {"type": "reset_buffer"}
   {"type": "token_emitted", "text": str, "offset": int}
   {"type": "check_started", "offset": int}
   {"type": "verdict", "verdict": "ok"|"error"|"inactive", "diagnostics": [...], "offset": int}
   {"type": "checkpoint", "offset": int}
   {"type": "rollback", "to_offset": int, "discarded": str, "rollback_count": int}
+  {"type": "backend_stats", "prefix_tokens": int, "cached_tokens": int,
+   "cache_hit_pct": float, "ttft_s": float|None, "is_rollback": bool}
   {"type": "final", "content": str, "rollback_count": int}
   {"type": "error", "message": str}
 """
@@ -66,6 +68,13 @@ from soundcode.lang.rust import (
     RustWorkspace,
 )
 from soundcode.llm import LlmServer, GenerationConfig
+from soundcode.logits_processors import (
+    NoopLogitsProcessor,
+    RocodeDecayingPenaltyProcessor,
+    SemGuardEvaluatorProcessor,
+)
+from soundcode.rocode_processor import RocodeTriePenaltyProcessor
+from soundcode.semguard_eval import SemGuardEvaluator
 from soundcode.eval.dataset import load_rust_humaneval
 from soundcode.web.demo_client import DemoClient, DemoConfig
 from soundcode.web.extra_prompts import CUSTOM_PROBLEMS
@@ -158,6 +167,39 @@ def _python_workspace_factory() -> PythonWorkspace:
     return PythonWorkspace()
 
 
+# Per-language function-closer string. Glued onto the model-generated
+# `code.content` inside `Code.check()` (in-loop verifier hits) and inside
+# `DemoClient._emit_final_check` (post-hoc full-body check) so the file
+# fed to the checker is syntactically complete. Each closer must match
+# the corresponding workspace's seed shape (see `LANG_DISPATCH` below):
+#
+#   - Rust: prompt ends with `fn foo(...) -> T {`. Closer closes the body
+#     with `unreachable!()` (universal-return shim that satisfies any
+#     return type so only in-content errors surface) plus a `}` plus a
+#     trailing `fn main() {}` so the cargo crate has an entry point.
+#     This is the historical default — preserved byte-identically.
+#   - C++: prompt ends with `T foo(...) {`. Closer uses `return {};`
+#     (value-init that satisfies any non-void return type via brace-init,
+#     and is accepted by g++ for void too) plus the body `}` plus an
+#     `int main() { return 0; }` entry point.
+#   - Java: prompt ends with `public class Main { ... static T foo(...) {`
+#     where the workspace seeds the Main class itself. Closer therefore
+#     has to close the method (`}`) AND the class (`}`). No separate
+#     `main()` needed — `JavaWorkspace._MAIN_JAVA_SKELETON` already wires
+#     one in (and the model body is the static `foo`, not `main`).
+#   - Python: prompt ends with `def foo(...) -> T:\n    """docs"""`.
+#     The closer is `\n    pass\n` — adds a benign no-op statement at the
+#     function-body indent so `compile()` doesn't choke on a dangling `:`
+#     when the body is empty / partial. Python has no separate `main()`
+#     entry point.
+LANG_CLOSER: dict[str, str] = {
+    "rust":   "\n    unreachable!()\n}\n\nfn main() {}\n",
+    "cpp":    "\n    return {};\n}\n\nint main() { return 0; }\n",
+    "java":   "\n    }\n}\n",
+    "python": "\n    pass\n",
+}
+
+
 # Dispatch table: (language, mode) -> dict of factories. `checker_cls`
 # is invoked as `checker_cls(workspace=<path>)`; `boundary_cls()` takes
 # no args; `workspace_factory()` returns the Workspace instance whose
@@ -212,6 +254,111 @@ LANG_DISPATCH = {
         "tool": "pyright-langserver",
     },
 }
+
+
+# ─── backend + algorithm dispatch ─────────────────────────────────────
+
+
+def _make_ollama_backend(model: str, config: GenerationConfig, _processor):
+    """Ollama backend ignores the logits_processor — Ollama's HTTP API
+    doesn't accept per-step logit hooks. The processor is constructed for
+    API symmetry with the vLLM path, then dropped here."""
+    return LlmServer(model=model, config=config)
+
+
+def _make_vllm_backend(model: str, config: GenerationConfig, processor):
+    """vLLM backend: imports the module lazily so the production Ollama
+    deployment doesn't have to pay the vLLM import cost on every server
+    startup. Forwards the configured logits_processor through."""
+    from soundcode.vllm_backend import VllmBackend
+    return VllmBackend(
+        model=model, config=config, logits_processor=processor,
+    )
+
+
+BACKEND_DISPATCH = {
+    "ollama": _make_ollama_backend,
+    "vllm":   _make_vllm_backend,
+}
+
+
+ALGORITHM_DISPATCH = {
+    # SoundCode default — no penalty, no observation. Rollback works via
+    # prompt-prefix re-decode + structural checkpoint (the processor never
+    # touches logits).
+    "soundcode":       NoopLogitsProcessor,
+    # MVP ROCODE — flat list of (token_id, expected_position) pairs, no trie.
+    # The `"rocode"` key is the historical name; `"rocode_lite"` is the new
+    # explicit alias post-faithful-version. Both point at the same class so
+    # existing UI clients keep working.
+    "rocode":          RocodeDecayingPenaltyProcessor,
+    "rocode_lite":     RocodeDecayingPenaltyProcessor,
+    # Faithful ROCODE — backed by RocodeTrie; tracks per-token nodes with
+    # accumulated penalty across attempts. The lambda factory pins
+    # `lam=0.9` (paper default); a future patch can plumb lambda through
+    # the WS request payload if we want per-run tuning.
+    "rocode_faithful": lambda: RocodeTriePenaltyProcessor(lam=0.9),
+    # SemGuard fallback — the actual singleton-backed construction happens
+    # in `_run_generation` (see `get_semguard_evaluator()` below). This
+    # dispatch entry is the no-op fallback: if a caller goes through the
+    # generic factory path (e.g. a test), they get a placeholder that
+    # silently degrades to logits-passthrough rather than crashing.
+    "semguard":        SemGuardEvaluatorProcessor,
+}
+
+
+# ─── SemGuard singleton ────────────────────────────────────────────────
+#
+# The trained evaluator (1.3B classifier on top of DeepSeek-Coder-1.3B-base)
+# is expensive to construct — it loads the full backbone into VRAM, plus
+# the BCE head on top. We build it once at server startup and reuse it
+# across every SemGuard run. The per-request processor wraps the singleton
+# so its `score_prefix` calls all serialise through the evaluator's internal
+# `asyncio.Lock`.
+#
+# Paths are hard-coded to the training output. If either is missing (e.g.
+# training hasn't finished or the user hasn't downloaded the backbone), the
+# factory returns None and the server falls back to constructing a no-op
+# SemGuardEvaluatorProcessor — generation still works, just without
+# rollback signalling. A `status` WS event surfaces this to the UI so the
+# user knows they're getting a degraded run.
+_SEMGUARD_CKPT_PATH = (
+    PROJECT_ROOT
+    / "reproduce" / "results" / "semguard"
+    / "train_20260524_115641" / "deepseek-coder-1.3b_python"
+    / "checkpoinss" / "0" / "model_0.bin"
+)
+_SEMGUARD_BACKBONE_PATH = Path.home() / "hf-models" / "deepseek-coder-1.3b-base"
+
+_SEMGUARD_EVALUATOR: SemGuardEvaluator | None = None  # lazy-init singleton
+_SEMGUARD_LOAD_LOCK = asyncio.Lock()                  # one-time init guard
+
+
+async def get_semguard_evaluator() -> SemGuardEvaluator | None:
+    """Lazily construct + warmup the SemGuardEvaluator singleton.
+
+    Returns the singleton instance, or None if the checkpoint / backbone
+    isn't present on disk (caller decides to fall back to a no-op processor).
+    Subsequent calls return the cached singleton — `await warmup()` runs
+    only on the very first call, under `_SEMGUARD_LOAD_LOCK` so two
+    concurrent SemGuard runs don't both pay the load cost."""
+    global _SEMGUARD_EVALUATOR
+    if _SEMGUARD_EVALUATOR is not None:
+        return _SEMGUARD_EVALUATOR
+    if not _SEMGUARD_CKPT_PATH.exists() or not _SEMGUARD_BACKBONE_PATH.exists():
+        return None
+    async with _SEMGUARD_LOAD_LOCK:
+        # Double-checked-locking: another coroutine may have initialised
+        # us while we were waiting for the lock.
+        if _SEMGUARD_EVALUATOR is not None:
+            return _SEMGUARD_EVALUATOR
+        evaluator = SemGuardEvaluator(
+            checkpoint_path=_SEMGUARD_CKPT_PATH,
+            backbone_path=_SEMGUARD_BACKBONE_PATH,
+        )
+        await evaluator.warmup()
+        _SEMGUARD_EVALUATOR = evaluator
+    return _SEMGUARD_EVALUATOR
 
 
 # ─── workspace + checker wiring ───────────────────────────────────────
@@ -396,6 +543,16 @@ async def _run_generation(req: dict, emit) -> None:
         model = req.get("model", "mistral-small3.2:24b")
         token_delay_ms = int(req.get("token_delay_ms", 0))
         instruct = bool(req.get("instruct", False))
+        # Backend + algorithm dispatch. Missing → ollama + soundcode (= the
+        # historical defaults, byte-identical to pre-vLLM behaviour). Unknown
+        # values fall back to the default rather than failing the run, so a
+        # stale UI talking to a new server still works.
+        backend_req = (req.get("backend") or "ollama").lower()
+        if backend_req not in BACKEND_DISPATCH:
+            backend_req = "ollama"
+        algorithm_req = (req.get("algorithm") or "soundcode").lower()
+        if algorithm_req not in ALGORITHM_DISPATCH:
+            algorithm_req = "soundcode"
         mode_req = req.get("mode")
         # Backward compat: pre-mode clients sent `thinking: true` which maps
         # to RAW_THINK_INJECT.
@@ -468,6 +625,8 @@ async def _run_generation(req: dict, emit) -> None:
             "mode_requested": mode_requested.value,
             "mode_active": mode_active.value,
             "reenter_thinking_on_rollback": reenter_thinking,
+            "backend": backend_req,
+            "algorithm": algorithm_req,
         },
     })
 
@@ -569,17 +728,79 @@ async def _run_generation(req: dict, emit) -> None:
         stop_patterns = ["\n}\n\n//"]
     else:
         stop_patterns = ["\n}", "\nfn ", "\npub fn ", "\nimpl ", "\n}\n\n//"]
-    llm = LlmServer(
-        model=model,
-        config=GenerationConfig(
-            max_tokens=-1,
-            stop=stop_patterns,
-            mode=mode_active,
-            reenter_thinking_on_rollback=reenter_thinking,
-        ),
+    # Build the logits processor first (most are nullary; if a future entry
+    # needs config it can read req fields here). Then hand it to the
+    # backend factory, which decides whether to actually wire it through.
+    #
+    # SemGuard takes a custom path: it needs a singleton SemGuardEvaluator
+    # (the trained 1.3B classifier — expensive to construct), so we look it
+    # up via `get_semguard_evaluator()` rather than going through the
+    # nullary-factory dispatch entry. If the singleton can't be loaded
+    # (checkpoint or backbone missing on disk), we still construct a
+    # placeholder processor — `__call__` becomes a no-op + emits a warning
+    # at construction time — and surface the degradation to the UI so the
+    # user knows they're not actually getting SemGuard's rollback signal.
+    try:
+        if algorithm_req == "semguard":
+            evaluator = await get_semguard_evaluator()
+            if evaluator is None:
+                # No checkpoint / no backbone — placeholder no-op processor.
+                processor = SemGuardEvaluatorProcessor(
+                    evaluator=None, tokenizer=None,
+                )
+                await emit_and_log({
+                    "type": "status", "phase": "warning",
+                    "message": (
+                        "SemGuard checkpoint not loaded "
+                        f"(missing {_SEMGUARD_CKPT_PATH.name} or backbone); "
+                        "algorithm degraded to no-op — generation proceeds "
+                        "without semantic rollback signals"
+                    ),
+                })
+            else:
+                threshold = float(req.get("threshold", 0.5))
+                processor = SemGuardEvaluatorProcessor(
+                    evaluator=evaluator,
+                    tokenizer=evaluator._tokenizer,
+                    threshold=threshold,
+                )
+                # Bind to the current event loop so the sampler can schedule
+                # scoring coroutines via `run_coroutine_threadsafe`. The
+                # DemoClient polls `processor.rollback_signals` between
+                # tokens (see `demo_client.py`).
+                await processor.bind_loop()
+        else:
+            processor = ALGORITHM_DISPATCH[algorithm_req]()
+    except Exception as e:
+        await emit_and_log({
+            "type": "status", "phase": "error",
+            "message": f"could not construct algorithm `{algorithm_req}`: {e!r}",
+        })
+        log_fp.close()
+        return
+    gen_config = GenerationConfig(
+        max_tokens=-1,
+        stop=stop_patterns,
+        mode=mode_active,
+        reenter_thinking_on_rollback=reenter_thinking,
     )
+    try:
+        llm = BACKEND_DISPATCH[backend_req](model, gen_config, processor)
+    except Exception as e:
+        await emit_and_log({
+            "type": "status", "phase": "error",
+            "message": f"could not construct backend `{backend_req}`: {e!r}",
+        })
+        log_fp.close()
+        return
 
-    await emit_and_log({"type": "status", "phase": "loading", "message": f"loading model into memory: {model}"})
+    await emit_and_log({
+        "type": "status", "phase": "loading",
+        "message": (
+            f"loading model into memory: {model} "
+            f"(backend={backend_req}, algorithm={algorithm_req})"
+        ),
+    })
     try:
         await llm.warmup()
     except Exception as e:
@@ -597,6 +818,12 @@ async def _run_generation(req: dict, emit) -> None:
         ),
         emit=emit_and_log,
         boundary=boundary,
+        # Per-language source tail (see `LANG_CLOSER` above). Threaded into
+        # `DemoClient` so both the in-loop check (via `Code.function_closer`)
+        # and the post-hoc final check (via `DemoClient.function_closer`)
+        # use the language-appropriate closer instead of the Rust-only shim
+        # that previously leaked into every language's checker source.
+        function_closer=LANG_CLOSER.get(language, LANG_CLOSER["rust"]),
     )
 
     await emit_and_log({"type": "status", "phase": "ready", "message": "model ready, starting generation"})

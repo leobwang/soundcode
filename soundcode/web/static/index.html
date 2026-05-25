@@ -32,6 +32,18 @@
 
 <div id="demo-controls-bar">
   <div id="status" class="status idle" aria-live="polite">idle</div>
+  <!-- Backend-stats panel: surfaces vLLM prefix-cache evidence so the demo
+       can show the headline (Qwen 7B rollback speedup 1.68x, cache hit 99.8%).
+       Updated every ~32 tokens and on every rollback via the `backend_stats`
+       WS event. Hidden until the first stats arrive (Ollama backends never
+       populate `last_stats`, so the panel just stays hidden for them). -->
+  <div id="backend-stats" class="backend-stats" aria-live="polite" hidden>
+    <span class="bs-label">KV-cache</span>
+    <span class="bs-field"><span class="bs-key">hit</span> <span id="bs-hit-pct">—</span></span>
+    <span class="bs-field"><span class="bs-key">cached</span> <span id="bs-cached">—</span> / <span id="bs-prefix">—</span> tok</span>
+    <span class="bs-field"><span class="bs-key">TTFT</span> <span id="bs-ttft">—</span></span>
+    <span id="bs-rollback-badge" class="bs-rollback-badge" hidden>resumed</span>
+  </div>
 </div>
 
 <div id="settings-prompt-row">
@@ -63,6 +75,24 @@
     <select id="verifier-select" aria-label="Verifier">
       <option value="compiler" selected>Compiler (fast, one-shot subprocess)</option>
       <option value="lsp">LSP (heavy, persistent language server)</option>
+    </select>
+  </div>
+
+  <div class="control-group">
+    <label for="backend-select">Backend</label>
+    <select id="backend-select" aria-label="LLM backend">
+      <option value="ollama" selected>Ollama (HTTP, server-managed)</option>
+      <option value="vllm">vLLM (in-process, GPU)</option>
+    </select>
+  </div>
+
+  <div class="control-group">
+    <label for="algorithm-select">Algorithm</label>
+    <select id="algorithm-select" aria-label="Logits-processor algorithm">
+      <option value="soundcode" selected>SoundCode (no logit penalty)</option>
+      <option value="rocode_lite">ROCODE lite (decayed bad-token penalty, MVP)</option>
+      <option value="rocode_faithful">ROCODE faithful (trie + strategic rollback)</option>
+      <option value="semguard">SemGuard (evaluator-driven rollback)</option>
     </select>
   </div>
 
