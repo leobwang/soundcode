@@ -1,0 +1,245 @@
+% ============================================================
+% Direct neighbours: decoding-time with verifier
+% ============================================================
+
+@inproceedings{agrawal2023monitor,
+  title     = {Monitor-Guided Decoding of Code {LM}s with Static Analysis of Repository Context},
+  author    = {Agrawal, Lakshya A and Kanade, Aditya and Goyal, Navin and Lahiri, Shuvendu and Rajamani, Sriram},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year      = {2023},
+  note      = {arXiv:2306.10763},
+  url       = {https://arxiv.org/abs/2306.10763}
+}
+
+@misc{multilspy,
+  title  = {{multilspy}: Cross-platform {P}ython {LSP}-client library},
+  author = {Agrawal, Lakshya A and others},
+  year   = {2023},
+  note   = {Part of monitors4codegen; \url{https://github.com/microsoft/monitors4codegen}}
+}
+
+@misc{jiang2024rocode,
+  title         = {{ROCODE}: {I}ntegrating Backtracking Mechanism and Program Analysis in Large Language Models for Code Generation},
+  author        = {Jiang, Xue and Zheng, Yihong and Lyu, Yuxiang and Niu, Changjian and Wang, Bin and Hu, Zibin and Jin, Zhi},
+  year          = {2024},
+  note          = {arXiv:2411.07112},
+  url           = {https://arxiv.org/abs/2411.07112}
+}
+
+@misc{wang2025semguard,
+  title  = {{SemGuard}: Real-Time Semantic Evaluator for Correcting {LLM}-Generated Code},
+  author = {Tian, Zhihao and Yin, Lei and Zhang, Bingyu and Wang, Hongwei and Zhang, Shaohua and Hou, Yulei and Ye, Yibo and Zhou, Yu},
+  year   = {2025},
+  note   = {arXiv:2509.24507},
+  url    = {https://arxiv.org/abs/2509.24507}
+}
+
+@inproceedings{ugare2025itergen,
+  title     = {{IterGen}: Iterative Semantic-aware Structured {LLM} Generation with Backtracking},
+  author    = {Ugare, Shubham and Gumaste, Rohan and Suresh, Tarun and Singh, Gagandeep and Misailovic, Sasa},
+  booktitle = {International Conference on Learning Representations},
+  year      = {2025},
+  url       = {https://openreview.net/forum?id=ac93gRzxxV}
+}
+
+% ============================================================
+% Constrained decoding without rollback (sync, mask-only)
+% ============================================================
+
+@inproceedings{scholak2021picard,
+  title     = {{PICARD}: Parsing Incrementally for Constrained Auto-Regressive Decoding from Language Models},
+  author    = {Scholak, Torsten and Schucher, Nathan and Bahdanau, Dzmitry},
+  booktitle = {Empirical Methods in Natural Language Processing},
+  year      = {2021},
+  note      = {arXiv:2109.05093},
+  url       = {https://arxiv.org/abs/2109.05093}
+}
+
+@inproceedings{poesia2022synchromesh,
+  title     = {{Synchromesh}: Reliable Code Generation from Pre-trained Language Models},
+  author    = {Poesia, Gabriel and Polozov, Alex and Le, Vu and Tiwari, Ashish and Soares, Gustavo and Meek, Christopher and Gulwani, Sumit},
+  booktitle = {International Conference on Learning Representations},
+  year      = {2022},
+  note      = {arXiv:2201.11227},
+  url       = {https://arxiv.org/abs/2201.11227}
+}
+
+@inproceedings{geng2023gcd,
+  title     = {Grammar-Constrained Decoding for Structured {NLP} Tasks without Finetuning},
+  author    = {Geng, Saibo and Josifoski, Martin and Peyrard, Maxime and West, Robert},
+  booktitle = {Empirical Methods in Natural Language Processing},
+  year      = {2023},
+  note      = {arXiv:2305.13971},
+  url       = {https://arxiv.org/abs/2305.13971}
+}
+
+@inproceedings{beurerkellner2024domino,
+  title     = {Guiding {LLM}s The Right Way: Fast, Non-Invasive Constrained Generation},
+  author    = {Beurer-Kellner, Luca and Fischer, Marc and Vechev, Martin},
+  booktitle = {International Conference on Machine Learning},
+  year      = {2024},
+  note      = {arXiv:2403.06988},
+  url       = {https://arxiv.org/abs/2403.06988}
+}
+
+@inproceedings{mundler2025typeconstrained,
+  title     = {Type-Constrained Code Generation with Language Models},
+  author    = {M\"undler, Niels and He, Jingxuan and M\"uller, Tobias and Tsankov, Petar and Vechev, Martin},
+  booktitle = {ACM SIGPLAN Conference on Programming Language Design and Implementation},
+  year      = {2025},
+  note      = {arXiv:2504.09246},
+  url       = {https://arxiv.org/abs/2504.09246}
+}
+
+% ============================================================
+% Speculative decoding family (async, LM-as-verifier)
+% ============================================================
+
+@inproceedings{leviathan2023speculative,
+  title     = {Fast Inference from Transformers via Speculative Decoding},
+  author    = {Leviathan, Yaniv and Kalman, Matan and Matias, Yossi},
+  booktitle = {International Conference on Machine Learning},
+  year      = {2023},
+  note      = {arXiv:2211.17192},
+  url       = {https://arxiv.org/abs/2211.17192}
+}
+
+@misc{chen2023speculative,
+  title  = {Accelerating Large Language Model Decoding with Speculative Sampling},
+  author = {Chen, Charlie and Borgeaud, Sebastian and Irving, Geoffrey and Lespiau, Jean-Baptiste and Sifre, Laurent and Jumper, John},
+  year   = {2023},
+  note   = {arXiv:2302.01318},
+  url    = {https://arxiv.org/abs/2302.01318}
+}
+
+@inproceedings{fu2024lookahead,
+  title     = {Break the Sequential Dependency of {LLM} Inference Using Lookahead Decoding},
+  author    = {Fu, Yichao and Bailis, Peter and Stoica, Ion and Zhang, Hao},
+  booktitle = {International Conference on Machine Learning},
+  year      = {2024},
+  note      = {arXiv:2402.02057},
+  url       = {https://arxiv.org/abs/2402.02057}
+}
+
+% ============================================================
+% Iterative repair (verifier off the critical path)
+% ============================================================
+
+@inproceedings{madaan2023selfrefine,
+  title     = {{Self-Refine}: Iterative Refinement with Self-Feedback},
+  author    = {Madaan, Aman and Tandon, Niket and Gupta, Prakhar and Hallinan, Skyler and Gao, Luyu and Wiegreffe, Sarah and Alon, Uri and Dziri, Nouha and Prabhumoye, Shrimai and Yang, Yiming and Welleck, Sean and Majumder, Bodhisattwa Prasad and Gupta, Shashank and Yazdanbakhsh, Amir and Clark, Peter},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year      = {2023},
+  note      = {arXiv:2303.17651},
+  url       = {https://arxiv.org/abs/2303.17651}
+}
+
+@inproceedings{shinn2023reflexion,
+  title     = {{Reflexion}: Language Agents with Verbal Reinforcement Learning},
+  author    = {Shinn, Noah and Cassano, Federico and Berman, Edward and Gopinath, Ashwin and Narasimhan, Karthik and Yao, Shunyu},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year      = {2023},
+  note      = {arXiv:2303.11366},
+  url       = {https://arxiv.org/abs/2303.11366}
+}
+
+@inproceedings{chen2024selfdebug,
+  title     = {Teaching Large Language Models to Self-Debug},
+  author    = {Chen, Xinyun and Lin, Maxwell and Sch\"arli, Nathanael and Zhou, Denny},
+  booktitle = {International Conference on Learning Representations},
+  year      = {2024},
+  note      = {arXiv:2304.05128},
+  url       = {https://arxiv.org/abs/2304.05128}
+}
+
+@inproceedings{olausson2024selfrepair,
+  title     = {Is Self-Repair a Silver Bullet for Code Generation?},
+  author    = {Olausson, Theo X and Inala, Jeevana Priya and Wang, Chenglong and Gao, Jianfeng and Solar-Lezama, Armando},
+  booktitle = {International Conference on Learning Representations},
+  year      = {2024},
+  note      = {arXiv:2306.09896},
+  url       = {https://arxiv.org/abs/2306.09896}
+}
+
+@inproceedings{wang2024intervenor,
+  title     = {{INTERVENOR}: Prompting the Coding Ability of {LLM}s with the Interactive Chain of Repair},
+  author    = {Wang, Hanbin and Liu, Zhenghao and Wang, Shuo and Cui, Ganqu and Ding, Ning and Liu, Zhiyuan and Yu, Ge},
+  booktitle = {Findings of the Association for Computational Linguistics: ACL},
+  year      = {2024},
+  note      = {arXiv:2311.09868},
+  url       = {https://arxiv.org/abs/2311.09868}
+}
+
+@misc{ridnik2024alphacodium,
+  title  = {Code Generation with {AlphaCodium}: From Prompt Engineering to Flow Engineering},
+  author = {Ridnik, Tal and Kredo, Dedy and Friedman, Itamar},
+  year   = {2024},
+  note   = {arXiv:2401.08500},
+  url    = {https://arxiv.org/abs/2401.08500}
+}
+
+@inproceedings{zhou2024lats,
+  title     = {Language Agent Tree Search Unifies Reasoning, Acting, and Planning in Language Models},
+  author    = {Zhou, Andy and Yan, Kai and Shlapentokh-Rothman, Michal and Wang, Haohan and Wang, Yu-Xiong},
+  booktitle = {International Conference on Machine Learning},
+  year      = {2024},
+  note      = {arXiv:2310.04406},
+  url       = {https://arxiv.org/abs/2310.04406}
+}
+
+% ============================================================
+% Benchmarks and base models
+% ============================================================
+
+@misc{chen2021humaneval,
+  title  = {Evaluating Large Language Models Trained on Code},
+  author = {Chen, Mark and Tworek, Jerry and Jun, Heewoo and Yuan, Qiming and Pinto, Henrique Ponde de Oliveira and Kaplan, Jared and Edwards, Harri and Burda, Yuri and Joseph, Nicholas and Brockman, Greg and others},
+  year   = {2021},
+  note   = {arXiv:2107.03374},
+  url    = {https://arxiv.org/abs/2107.03374}
+}
+
+@article{cassano2022multipl,
+  title   = {{MultiPL-E}: A Scalable and Polyglot Approach to Benchmarking Neural Code Generation},
+  author  = {Cassano, Federico and Gouwar, John and Nguyen, Daniel and Nguyen, Sydney and Phipps-Costin, Luna and Pinckney, Donald and Yee, Ming-Ho and Zi, Yangtian and Anderson, Carolyn Jane and Feldman, Molly Q and others},
+  journal = {IEEE Transactions on Software Engineering},
+  year    = {2023},
+  note    = {arXiv:2208.08227},
+  url     = {https://arxiv.org/abs/2208.08227}
+}
+
+@misc{hui2024qwen25coder,
+  title  = {{Qwen2.5-Coder} Technical Report},
+  author = {Hui, Binyuan and Yang, Jian and Cui, Zeyu and Yang, Jiaxi and Liu, Dayiheng and Zhang, Lei and Liu, Tianyu and Zhang, Jiajun and Yu, Bowen and Dang, Kai and others},
+  year   = {2024},
+  note   = {arXiv:2409.12186},
+  url    = {https://arxiv.org/abs/2409.12186}
+}
+
+@misc{jain2024livecodebench,
+  title  = {{LiveCodeBench}: Holistic and Contamination Free Evaluation of Large Language Models for Code},
+  author = {Jain, Naman and Han, King and Gu, Alex and Li, Wen-Ding and Yan, Fanjia and Zhang, Tianjun and Wang, Sida and Solar-Lezama, Armando and Sen, Koushik and Stoica, Ion},
+  year   = {2024},
+  note   = {arXiv:2403.07974},
+  url    = {https://arxiv.org/abs/2403.07974}
+}
+
+% ============================================================
+% Infrastructure
+% ============================================================
+
+@inproceedings{vllm2023,
+  title     = {Efficient Memory Management for Large Language Model Serving with {PagedAttention}},
+  author    = {Kwon, Woosuk and Li, Zhuohan and Zhuang, Siyuan and Sheng, Ying and Zheng, Lianmin and Yu, Cody Hao and Gonzalez, Joseph E. and Zhang, Hao and Stoica, Ion},
+  booktitle = {ACM Symposium on Operating Systems Principles},
+  year      = {2023},
+  note      = {arXiv:2309.06180},
+  url       = {https://arxiv.org/abs/2309.06180}
+}
+
+@misc{soundcode2025github,
+  title  = {{SoundCode}: A reference implementation of async {LSP}-supervised decoding},
+  author = {Wang, Leo},
+  year   = {2025},
+  howpublished = {\url{https://github.com/leobwang/soundcode}}
+}

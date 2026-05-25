@@ -1,0 +1,172 @@
+\section{Introduction}\label{sec:intro}
+
+Large language models predict next tokens; they do not enforce
+programming-language rules. Even after billions of training tokens of
+high-quality code, instruction-tuned code LMs hallucinate
+ill-typed expressions, undefined identifiers, ill-formed borrows, and
+nonsensical control flow. The hallucinations are not bugs in
+particular models --- they are a structural consequence of how
+autoregressive sampling commits to one token at a time without
+look-back: any path the model places non-trivial probability mass on
+becomes reachable, and a single bad token can cascade
+\citep{jiang2024rocode,wang2025semguard}. Recent work on the
+\emph{intrinsic} sources of hallucination in language modelling
+confirms this: a frozen LM that has been trained on data with even a
+small fraction of subtly incorrect programs will reliably generate
+some subtle errors at inference, because next-token cross-entropy
+gives no mechanism to refuse paths that violate global constraints
+\citep{olausson2024selfrepair}.
+
+Programming-language verifiers are exactly the missing mechanism.
+A compiler, a type checker, a borrow checker, or a Language Server
+Protocol (LSP) server, taken on the decidable fragment of code it
+covers --- syntax, type, name resolution, lifetimes --- returns a
+ground-truth verdict: either the program is well-formed or it is not.
+This verdict is decoupled from how the program was produced. It is
+also exactly the kind of side information a generative LM has no
+internal way to consume. The natural design move is to put one in the
+decoding loop.
+
+Several recent systems do exactly this. Monitor-Guided Decoding
+(MGD; \citealp{agrawal2023monitor}) consults an LSP at hand-picked
+syntactic triggers --- the \code{.} that begins a member-access
+expression in Java --- and masks the LM's next-token logits to those
+prefixing a type-consistent identifier. ROCODE
+\citep{jiang2024rocode} runs the compiler incrementally after each
+generated statement, rolls back the buffer on an error, and decodes
+the retry under an exponentially-decaying token-penalty mask.
+SemGuard \citep{wang2025semguard} swaps the compiler for a learned
+1.3B semantic classifier that scores each emitted line and triggers
+line-level rollback below a threshold. Type-Constrained Code
+Generation \citep{mundler2025typeconstrained} formalizes per-token
+soundness in TypeScript by composing a prefix automaton with a
+type-reachability search.
+
+All four share one design choice: the verifier runs
+\emph{synchronously} on the decoding critical path. The LM stops; the
+verifier returns; the LM resumes. This is invisible when the
+verifier is fast --- Python's \code{compile()} parses a partial
+program in $\sim$0.1\,ms, $g{+}{+}\;\code{-fsyntax-only}$ takes
+${\sim}3\,\mathrm{ms}$, and a 1.3B classifier evaluates one line of
+context in single-digit milliseconds on a modern GPU. ROCODE's
+benchmarks are Python and C++ \citep{jiang2024rocode}, SemGuard's are
+Python and Java \citep{wang2025semguard}, MGD's are Java with
+hand-picked dereference triggers \citep{agrawal2023monitor}. In each
+case the per-call verifier cost is well below the LM's own per-token
+latency, so the slowdown is tolerable. MGD reports a $\sim$83\%
+mean-decoding-time slowdown \citep{agrawal2023monitor};
+Type-Constrained reports a $39$--$52\%$ median per-instance
+overhead \citep{mundler2025typeconstrained}. The cost is real but
+amortized away by the gain in code quality.
+
+The same design fails to scale to slower oracles. \code{cargo check}
+on a typical Rust function takes $\sim$$100$ to several hundred
+milliseconds; \code{javac} on a single Java method takes
+${\sim}180\,\mathrm{ms}$ once JVM startup is amortized; a
+whole-crate borrow check on an unfamiliar trait expansion can take
+seconds. A synchronous decoding loop that blocks on such an oracle
+spends most of its wall time idle. The two natural responses --- (1)
+substitute a faster, weaker oracle, e.g.\ a learned classifier
+\citep{wang2025semguard}; or (2) accept a $>10\times$ slowdown and
+amortize against the larger code-quality gain --- both surrender
+something the design originally promised. The first sacrifices
+soundness (a learned classifier is wrong on a defined fraction of
+inputs by construction); the second sacrifices the wall-clock budget
+the verifier-guided pipeline was meant to outperform.
+
+This paper takes a different response: \emph{run the verifier
+asynchronously}. We introduce \textbf{SoundCode}, a producer-consumer
+decoding loop in which:
+\begin{itemize}[itemsep=2pt,topsep=2pt]
+\item the LM streams tokens uninterrupted (the producer);
+\item at each depth-zero structural boundary --- \code{;} or \code{\}}
+  at brace-depth zero in C-family languages, newline at indent zero in
+  Python --- a background task is spawned to run the verifier on the
+  current buffer snapshot;
+\item a consumer task drains finished checks in FIFO order;
+\item on the first \emph{blocking} diagnostic, pending checks are
+  cancelled, the buffer is truncated to the most recent
+  verifier-blessed checkpoint, and the LM is re-prompted from there.
+\end{itemize}
+Crucially, the same rollback algorithm underlies the synchronous
+ROCODE-style baseline that we compare against; \emph{the only
+architectural difference is whether the verifier blocks the
+decoder.} This isolates the sync-vs-async axis at fixed verifier,
+fixed model, and fixed benchmark.
+
+We evaluate SoundCode against ROCODE-style synchronous verification
+on HumanEval-rs ($n\!=\!156$ after filtering) and HumanEval-cpp
+($n\!=\!161$) from MultiPL-E \citep{cassano2022multipl}, using
+Qwen2.5-Coder-7B-Instruct \citep{hui2024qwen25coder} via vLLM. We
+report pass@1, mean wall-clock time per problem, mean rollback
+count, and compile rate, plus an ablation on rollback target
+(naive last-checkpoint vs.\ ROCODE's max-entropy formula).
+
+\paragraph{Headline result.}
+Holding the model, the verifier, and the rollback algorithm fixed,
+SoundCode is $1.59\times$ faster on Rust ($1.30$\,s sync $\to$
+$0.82$\,s async; $1.48\times$ at the per-problem median; async beats
+sync on $116$ of $156$ paired problems, $74.4\%$) and $2.95\times$
+faster on C++ ($3.65$\,s $\to$ $1.23$\,s; $2.84\times$ at the median;
+async wins on $159$ of $161$ paired problems, $98.8\%$) than the
+synchronous ROCODE-style equivalent. The C++ result is the more
+interesting story: async \emph{simultaneously} speeds the system up
+and \emph{raises} pass@1 from $71.4\%$ to $76.4\%$ ($+5.0$\,pp). On
+Rust, sync still leads pass@1 by $3.2$\,pp ($72.4\%$ vs $69.2\%$),
+which we read not as a deficit of async but as a benchmark in which
+the cost-spectrum prediction (\S\ref{sec:when-async}) places Rust
+near the marginal regime where sync's mid-decode aborts cost less
+wall-time than its information value.
+
+\paragraph{Contributions.} We frame the contribution along four axes:
+\begin{enumerate}[itemsep=2pt,topsep=2pt]
+\item \textbf{The first asynchronous design for verifier-guided code
+  generation.} Every prior boundary-rollback system
+  \citep{jiang2024rocode,wang2025semguard,ugare2025itergen} runs its
+  verifier synchronously; every prior asynchronous-parallel-verify
+  system \citep{leviathan2023speculative,chen2023speculative,fu2024lookahead}
+  uses the LM itself as the verifier and gives up soundness.
+  SoundCode occupies the open ``semantic-verifier $\times$
+  structural-rollback $\times$ async'' design point.
+\item \textbf{A controlled head-to-head measurement.} At fixed model,
+  fixed verifier, and fixed rollback algorithm --- so the only axis
+  that varies is whether the verifier blocks the decoder --- async
+  delivers a $1.59\times$ wall-time speedup on Rust ($116/156$
+  paired wins) and a $2.95\times$ speedup on C++ ($159/161$ paired
+  wins), with C++ pass@1 simultaneously rising from $71.4\%$ to
+  $76.4\%$.
+\item \textbf{A verifier-cost-spectrum framing that predicts when
+  async helps.} We sort verifiers along a cost spectrum (Python's
+  \code{compile()} $\sim$$0.1\,\mathrm{ms}$; $g{+}{+}\;
+  \code{-fsyntax-only}$ $\sim$$3\,\mathrm{ms}$; \code{cargo check}
+  $\sim$$35\,\mathrm{ms}$; \code{javac} $\sim$$180\,\mathrm{ms}$;
+  whole-crate analyses up to seconds) and argue that the async design
+  pays off whenever per-call verifier cost exceeds per-token decoding
+  latency. The Rust-vs-C++ asymmetry in our results --- a smaller
+  win on the cheaper-verifier language --- is the first empirical
+  confirmation of this prediction.
+\item \textbf{A reproducible open-source implementation and live
+  demo.} The producer is vLLM's \code{AsyncLLMEngine}
+  \citep{vllm2023} run with \code{enforce\_eager=False}; the
+  verifier is rust-analyzer via \code{multilspy}
+  \citep{agrawal2023monitor,multilspy} or \code{cargo check} /
+  $g{+}{+}\;\code{-fsyntax-only}$ via subprocess. Engineering effort
+  to port to a new language is one boundary-detector and one
+  verifier-driver class. Source:
+  \href{https://github.com/leobwang/soundcode}%
+       {\code{github.com/leobwang/soundcode}};
+  live demo:
+  \href{https://soundcode-demo.psixyzt.com}%
+       {\code{soundcode-demo.psixyzt.com}}
+  \citep{soundcode2025github}.
+\end{enumerate}
+
+The Olausson et al.\ matched-budget framework
+\citep{olausson2024selfrepair} sets the bar any verifier-guided
+system must clear: a self-repair loop only beats matched-budget
+i.i.d.\ resampling when the feedback signal is \emph{strictly
+stronger} than the generator. We argue that a real compiler is
+exactly that. A learned classifier is not. SemGuard
+\citep{wang2025semguard} acknowledges this trade-off explicitly. Our
+async design lets us pay for the strictly-stronger oracle in
+wall-clock terms without paying for it in throughput.

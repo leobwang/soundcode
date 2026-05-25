@@ -1,0 +1,91 @@
+\section{Conclusion}\label{sec:conclusion}
+
+We presented SoundCode, the first asynchronous design for
+verifier-guided code generation. The system is a producer-consumer
+decoding loop in which an LSP / compiler verifier runs in a
+background task at each depth-zero structural boundary, the producer
+LM streams tokens without blocking, and a consumer rolls back the
+buffer to the last verifier-confirmed checkpoint only on a returned
+blocking diagnostic. The same rollback algorithm underlies the
+synchronous ROCODE-style baseline \citep{jiang2024rocode}; the
+sync-versus-async axis is isolated at fixed verifier, fixed model,
+and fixed benchmark.
+
+\paragraph{Where async pays.}
+The win grows with verifier latency. Empirically, on Rust ---
+where \code{cargo check} is $\sim$$10$--$50\times$ a per-token
+decoding step --- async overlap recovers most of the verifier
+wall-time within $3.2$\,pp of the sync arm's pass@1
+($1.59\times$ speedup, $69.2\%$ async vs $72.4\%$ sync pass@1; async
+wins on $116$ of $156$ paired problems). On C++, where
+$g{+}{+}\;\code{-fsyntax-only}$'s cold-start
+$\sim$$150\,\mathrm{ms}$ dominates per-boundary cost, the win is
+larger still ($2.95\times$, with pass@1 \emph{rising} from $71.4\%$
+to $76.4\%$; async wins on $159$ of $161$ paired problems) ---
+as the cost-spectrum analysis in
+Section~\ref{sec:when-async} predicts. We expect the win to grow
+further on \code{javac}-supervised Java
+($\sim$$180\,\mathrm{ms}$) and to be largest on
+whole-crate borrow / trait analysis (up to seconds), neither of
+which we evaluate here but both of which the same architecture
+supports without modification.
+
+\paragraph{Limitations.}
+The matched-budget caveat from \citet{olausson2024selfrepair}
+applies: any speedup is only meaningful if the verifier itself is a
+strictly-stronger oracle than the generator on the disputed
+fragment. We argue that a compiler \emph{is} such an oracle on the
+decidable fragment of syntax, type, and lifetime correctness ---
+unlike a learned classifier \citep{wang2025semguard}, the compiler
+has no false-positive rate on errors that fall inside its formal
+spec. But this argument is restricted to that decidable fragment:
+the compiler tells us nothing about functional correctness, and any
+test-pass gain SoundCode delivers over vanilla decoding has to come
+from compilable-but-wrong code being a small fraction of all
+generated code. We do not address this gap; SemGuard
+\citep{wang2025semguard} is the natural complement that targets
+exactly the semantic-but-compilable failure mode.
+
+The current evaluation is also single-model and single-seed.
+Multi-seed confidence intervals and a faithful SemGuard retraining
+on Rust diagnostics are the obvious next two experiments.
+
+\paragraph{Future work.}
+Five extensions are immediate. (1) \emph{Oscillation-detection
+rollback.} On HumanEval-140 (\code{fix\_spaces}) under our
+\textsf{SyncCargo} arm, the model hit the 60\,s problem budget after
+emitting $66$ syntactically-valid repetition statements that all
+re-introduced the same compile error in the same place; each one was
+individually cleared by the boundary detector and re-rejected by the
+verifier. A policy that detects ``$N$ consecutive rollbacks landing
+within an offset window of each other'' and escalates to a coarser
+target (halve the buffer; restart from the prompt with a penalty
+mask) would have caught this pathology in tens of milliseconds. The
+case is concrete evidence that the next paper-sized contribution on
+this architecture is a \emph{penalty / oscillation} mechanism
+layered on top of the rollback policy. (2) \emph{Faithful SemGuard
+comparison.} SemGuard is the strongest learned-verifier baseline;
+adapting it from Python/Java to Rust requires retraining the 1.3B
+classifier on a curated Rust diff corpus, work currently in
+progress. (3) \emph{Larger benchmarks.} MBPP-rs and LiveCodeBench
+\citep{jain2024livecodebench} would extend the evaluation from
+single-function HumanEval to multi-function and contamination-free
+problems. (4) \emph{Beam-search and DFS rollback policies.} Our
+unifying $\pi$ abstraction admits multi-branch policies that we
+have not evaluated; the natural reference is
+LATS \citep{zhou2024lats}. (5) \emph{Composition with cheap
+front-end masks.} DOMINO \citep{beurerkellner2024domino} and
+Type-Constrained \citep{mundler2025typeconstrained} are
+near-zero-overhead syntactic prevention layers; composing them with
+SoundCode's expensive semantic verifier-with-rollback back-end
+should be Pareto-better than either alone.
+
+\paragraph{Artifacts.}
+A live web demo and the reference implementation are open-source.
+Demo:
+\href{https://soundcode-demo.psixyzt.com}%
+     {\code{soundcode-demo.psixyzt.com}}.
+Source:
+\href{https://github.com/leobwang/soundcode}%
+     {\code{github.com/leobwang/soundcode}}
+\citep{soundcode2025github}.

@@ -117,6 +117,18 @@ class VllmBackend:
         # this to >= the expected block size when loading such models. None
         # → let vLLM pick the default (2048 in 0.20.2).
         max_num_batched_tokens: int | None = None,
+        # Per-step concurrency cap. Single-user demos want a small value
+        # (~4-8) to keep scheduling overhead minimal. None → let vLLM use
+        # its default (256 in 0.20.2). For Qwen3.5-MoE-GPTQ with CUDA graphs
+        # enabled, the marlin GEMM workspace scales with this, so cap it.
+        max_num_seqs: int | None = None,
+        # vLLM CompilationConfig dict (e.g. cudagraph_capture_sizes,
+        # cudagraph_mode). Passed through unchanged to AsyncEngineArgs.
+        # None → vLLM picks the default (PIECEWISE, ~67 graph sizes).
+        # For Qwen3.5-MoE we cap captures to [1,2,4] decode shapes to
+        # avoid OOM during graph profiling — see
+        # notes/vllm-122b-throughput.md.
+        compilation_config: dict[str, Any] | None = None,
         # KV-cache reuse — on by default for SoundCode's rollback story. When
         # a rollback truncates the prompt to a previously-streamed prefix,
         # PagedAttention's automatic prefix cache reuses the prefill cost for
@@ -155,6 +167,14 @@ class VllmBackend:
                 max_num_batched_tokens if max_num_batched_tokens is not None
                 else reg.get("max_num_batched_tokens")
             )
+            max_num_seqs = (
+                max_num_seqs if max_num_seqs is not None
+                else reg.get("max_num_seqs")
+            )
+            compilation_config = (
+                compilation_config if compilation_config is not None
+                else reg.get("compilation_config")
+            )
         else:
             resolved_model = model
 
@@ -172,6 +192,8 @@ class VllmBackend:
         self._enforce_eager = enforce_eager if enforce_eager is not None else True
         self._quantization = quantization
         self._max_num_batched_tokens = max_num_batched_tokens
+        self._max_num_seqs = max_num_seqs
+        self._compilation_config = compilation_config
         self._enable_prefix_caching = enable_prefix_caching
         # Lazily-created engine; build on first warmup() / open_stream().
         self._engine: Any = None
@@ -341,6 +363,17 @@ class VllmBackend:
         # asserts `block_size <= max_num_batched_tokens` at startup.
         if self._max_num_batched_tokens is not None:
             engine_kwargs["max_num_batched_tokens"] = self._max_num_batched_tokens
+        # `max_num_seqs` — concurrent-request cap; for single-user demos
+        # we keep this small so the marlin MoE GEMM workspace stays small
+        # (graphs capture at multiples of `max_num_seqs`).
+        if self._max_num_seqs is not None:
+            engine_kwargs["max_num_seqs"] = self._max_num_seqs
+        # `compilation_config` — pass-through dict (vLLM accepts a dict and
+        # parses it into CompilationConfig). For Qwen3.5-MoE-GPTQ we cap
+        # `cudagraph_capture_sizes` to small decode shapes to avoid OOM
+        # during graph profiling; see the registry entry's comment.
+        if self._compilation_config is not None:
+            engine_kwargs["compilation_config"] = self._compilation_config
         engine_args = AsyncEngineArgs(**engine_kwargs)
         self._engine = AsyncLLMEngine.from_engine_args(engine_args)
 

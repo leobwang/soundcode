@@ -1,0 +1,104 @@
+\documentclass{article}
+
+% NeurIPS 2024 template, preprint mode (single-column, author info visible).
+\PassOptionsToPackage{numbers, compress}{natbib}
+\usepackage[preprint]{neurips_2024}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{multirow}
+\usepackage[ruled,linesnumbered]{algorithm2e}
+
+% --- Placeholders for in-progress experimental numbers ---
+% \todo{...} renders as a yellow-tinted in-line note we can search for later.
+\definecolor{todoyellow}{HTML}{FFF4C2}
+\newcommand{\todo}[1]{%
+  \par\smallskip\noindent
+  \fcolorbox{black!30}{todoyellow}{%
+    \parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{%
+      \textbf{[TODO]}~#1%
+    }%
+  }\par\smallskip%
+}
+
+% Inline-friendly variant for short placeholders inside running prose / tables.
+\newcommand{\itodo}[1]{\textcolor{red!75!black}{\textbf{[TODO:}~#1\textbf{]}}}
+
+% --- Code / inline command shorthand ---
+\newcommand{\code}[1]{\texttt{#1}}
+
+\title{Async LSP-Supervised Decoding for Code Generation}
+
+% Single author for the course submission.
+\author{%
+  Leo Wang\thanks{Code and live demo:
+    \href{https://github.com/leobwang/soundcode}{\code{github.com/leobwang/soundcode}};
+    \href{https://soundcode-demo.psixyzt.com}{\code{soundcode-demo.psixyzt.com}}.}\\
+  Department of Computer Science\\
+  University of Chicago\\
+  \texttt{psixyzt@gmail.com}\\
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Verifier-guided code-generation systems --- Monitor-Guided Decoding
+\citep{agrawal2023monitor}, ROCODE \citep{jiang2024rocode}, SemGuard
+\citep{wang2025semguard}, and Type-Constrained Code Generation
+\citep{mundler2025typeconstrained} --- all share one design choice:
+the verifier runs \emph{synchronously} on the decoding critical path.
+The decoder stalls while the language server, compiler, or learned
+classifier returns its verdict. This is tolerable when the verifier
+is fast (Python's \code{compile()}, $g{+}{+}\;\code{-fsyntax-only}$,
+or a 1.3B classifier on one line of code), but it forecloses the
+use of slower, sounder oracles --- \code{cargo check} on Rust
+(${\sim}100\,\mathrm{ms}$ to several seconds), \code{javac} on Java
+(${\sim}180\,\mathrm{ms}$), or whole-crate type and lifetime analyses.
+We present \emph{SoundCode}, a producer-consumer decoding loop in
+which a Language Server Protocol (LSP)
+\citep{agrawal2023monitor,multilspy} verifier runs
+\emph{asynchronously} alongside the LLM, spawning a check at each
+depth-zero structural boundary (\code{;} or \code{\}}) and triggering
+rollback to the last verified checkpoint only when a returned
+diagnostic is blocking. The same rollback algorithm underlies the
+synchronous ROCODE baseline \citep{jiang2024rocode}; we isolate the
+sync-versus-async axis at fixed verifier, fixed model, and fixed
+benchmark.
+We evaluate Qwen2.5-Coder-7B-Instruct \citep{hui2024qwen25coder}
+on MultiPL-E HumanEval-rs and HumanEval-cpp
+\citep{cassano2022multipl}. Holding the model, the verifier, and the
+rollback algorithm fixed, SoundCode is $1.59\times$ faster on Rust
+($116/156$ paired wins) and $2.95\times$ faster on C++
+($159/161$ paired wins) than the synchronous ROCODE-style
+equivalent, while \emph{raising} C++ pass@1 from $71.4\%$ to $76.4\%$.
+Beyond the measurement, we offer a design framework
+--- when to async, when to roll back, and where to roll back --- that
+applies to any verifier whose cost is not negligible relative to a
+single token's decoding latency. A live web demo and reference
+implementation are open-source.
+\end{abstract}
+
+\input{sections/intro.tex}
+\input{sections/related_work.tex}
+\input{sections/method.tex}
+\input{sections/results.tex}
+\input{sections/conclusion.tex}
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

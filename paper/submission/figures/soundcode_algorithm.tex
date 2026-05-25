@@ -1,0 +1,60 @@
+% SoundCode algorithm pseudocode.
+% Designed to be \input{...} into the paper. Uses algorithm2e in
+% the algoruled style with async/await annotations. Wrapping it in
+% standalone here so we also get a compile-only PDF for reference.
+\documentclass[border=2pt]{standalone}
+\usepackage{amsmath, amssymb}
+\usepackage[ruled, vlined, linesnumbered]{algorithm2e}
+\usepackage{varwidth}
+
+% Async / await keywords (visually distinct from compiler keywords).
+\SetKwFunction{NextTok}{LLM.next\_token}
+\SetKwFunction{SetPos}{LLM.set\_position}
+\SetKwFunction{Boundary}{at\_structural\_boundary}
+\SetKwFunction{Check}{check}
+\SetKwFunction{Append}{append}
+\SetKwFunction{Cancel}{cancel\_later\_tasks}
+\SetKwData{Code}{code}
+\SetKwData{Ckpt}{ckpt\_offsets}
+\SetKwData{Tasks}{tasks}
+\SetKwData{Tok}{tok}
+\SetKwData{Off}{off}
+\SetKw{Spawn}{spawn async}
+\SetKw{Poll}{poll}
+\SetKw{KwAnd}{and}
+\SetKw{KwNot}{not}
+
+\begin{document}
+\begin{varwidth}{\linewidth}
+\begin{algorithm}[H]
+\DontPrintSemicolon
+\caption{SoundCode async verifier loop}
+\KwIn{prompt $x$, model $\mathcal{M}$, verifier $\mathcal{V}$}
+\KwOut{verified code $y$}
+\Code $\leftarrow \emptyset$;\quad \Ckpt $\leftarrow [0]$;\quad \Tasks $\leftarrow [\,]$\;
+\While{\KwNot EOS}{
+  \Tok $\leftarrow$ \NextTok{$x$, \Code}\;
+  \Code.\Append{\Tok}\;
+  \tcp{Producer never blocks for the verifier}
+  \If{\Boundary{\Code}}{
+    \Spawn $\tau \leftarrow \mathcal{V}.$\Check{\Code}\tcp*{non-blocking}
+    \Tasks.\Append{$\tau$}\;
+  }
+  \tcp{Consumer drains finished verdicts each iteration}
+  \ForEach{$\tau \in$ \Tasks \KwAnd $\tau$.done}{
+    \uIf{$\tau$.\textnormal{verdict} \textnormal{=} \textbf{blocking}}{
+      \Off $\leftarrow$ \Ckpt$[-2]$\tcp*{last verified checkpoint}
+      \Code $\leftarrow$ \Code$[:\,$\Off$]$\;
+      \SetPos{\Off}\;
+      \Cancel{}\;
+      \textbf{break}\;
+    }
+    \uElseIf{$\tau$.\textnormal{verdict} \textnormal{=} \textbf{ok}}{
+      \Ckpt.\Append{$|$\Code$|$}\tcp*{advance frontier}
+    }
+  }
+}
+\Return \Code
+\end{algorithm}
+\end{varwidth}
+\end{document}

@@ -1,0 +1,241 @@
+\begin{thebibliography}{26}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Agrawal et~al.(2023{\natexlab{a}})Agrawal, Kanade, Goyal, Lahiri, and
+  Rajamani]{agrawal2023monitor}
+Lakshya~A Agrawal, Aditya Kanade, Navin Goyal, Shuvendu Lahiri, and Sriram
+  Rajamani.
+\newblock Monitor-guided decoding of code {LM}s with static analysis of
+  repository context.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  2023{\natexlab{a}}.
+\newblock URL \url{https://arxiv.org/abs/2306.10763}.
+\newblock arXiv:2306.10763.
+
+\bibitem[Agrawal et~al.(2023{\natexlab{b}})]{multilspy}
+Lakshya~A Agrawal et~al.
+\newblock {multilspy}: Cross-platform {P}ython {LSP}-client library,
+  2023{\natexlab{b}}.
+\newblock Part of monitors4codegen;
+  \url{https://github.com/microsoft/monitors4codegen}.
+
+\bibitem[Beurer-Kellner et~al.(2024)Beurer-Kellner, Fischer, and
+  Vechev]{beurerkellner2024domino}
+Luca Beurer-Kellner, Marc Fischer, and Martin Vechev.
+\newblock Guiding {LLM}s the right way: Fast, non-invasive constrained
+  generation.
+\newblock In \emph{International Conference on Machine Learning}, 2024.
+\newblock URL \url{https://arxiv.org/abs/2403.06988}.
+\newblock arXiv:2403.06988.
+
+\bibitem[Cassano et~al.(2023)Cassano, Gouwar, Nguyen, Nguyen, Phipps-Costin,
+  Pinckney, Yee, Zi, Anderson, Feldman, et~al.]{cassano2022multipl}
+Federico Cassano, John Gouwar, Daniel Nguyen, Sydney Nguyen, Luna
+  Phipps-Costin, Donald Pinckney, Ming-Ho Yee, Yangtian Zi, Carolyn~Jane
+  Anderson, Molly~Q Feldman, et~al.
+\newblock {MultiPL-E}: A scalable and polyglot approach to benchmarking neural
+  code generation.
+\newblock \emph{IEEE Transactions on Software Engineering}, 2023.
+\newblock URL \url{https://arxiv.org/abs/2208.08227}.
+\newblock arXiv:2208.08227.
+
+\bibitem[Chen et~al.(2023)Chen, Borgeaud, Irving, Lespiau, Sifre, and
+  Jumper]{chen2023speculative}
+Charlie Chen, Sebastian Borgeaud, Geoffrey Irving, Jean-Baptiste Lespiau,
+  Laurent Sifre, and John Jumper.
+\newblock Accelerating large language model decoding with speculative sampling,
+  2023.
+\newblock URL \url{https://arxiv.org/abs/2302.01318}.
+\newblock arXiv:2302.01318.
+
+\bibitem[Chen et~al.(2021)Chen, Tworek, Jun, Yuan, Pinto, Kaplan, Edwards,
+  Burda, Joseph, Brockman, et~al.]{chen2021humaneval}
+Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde de~Oliveira
+  Pinto, Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, Greg
+  Brockman, et~al.
+\newblock Evaluating large language models trained on code, 2021.
+\newblock URL \url{https://arxiv.org/abs/2107.03374}.
+\newblock arXiv:2107.03374.
+
+\bibitem[Chen et~al.(2024)Chen, Lin, Sch\"arli, and Zhou]{chen2024selfdebug}
+Xinyun Chen, Maxwell Lin, Nathanael Sch\"arli, and Denny Zhou.
+\newblock Teaching large language models to self-debug.
+\newblock In \emph{International Conference on Learning Representations}, 2024.
+\newblock URL \url{https://arxiv.org/abs/2304.05128}.
+\newblock arXiv:2304.05128.
+
+\bibitem[Fu et~al.(2024)Fu, Bailis, Stoica, and Zhang]{fu2024lookahead}
+Yichao Fu, Peter Bailis, Ion Stoica, and Hao Zhang.
+\newblock Break the sequential dependency of {LLM} inference using lookahead
+  decoding.
+\newblock In \emph{International Conference on Machine Learning}, 2024.
+\newblock URL \url{https://arxiv.org/abs/2402.02057}.
+\newblock arXiv:2402.02057.
+
+\bibitem[Geng et~al.(2023)Geng, Josifoski, Peyrard, and West]{geng2023gcd}
+Saibo Geng, Martin Josifoski, Maxime Peyrard, and Robert West.
+\newblock Grammar-constrained decoding for structured {NLP} tasks without
+  finetuning.
+\newblock In \emph{Empirical Methods in Natural Language Processing}, 2023.
+\newblock URL \url{https://arxiv.org/abs/2305.13971}.
+\newblock arXiv:2305.13971.
+
+\bibitem[Hui et~al.(2024)Hui, Yang, Cui, Yang, Liu, Zhang, Liu, Zhang, Yu,
+  Dang, et~al.]{hui2024qwen25coder}
+Binyuan Hui, Jian Yang, Zeyu Cui, Jiaxi Yang, Dayiheng Liu, Lei Zhang, Tianyu
+  Liu, Jiajun Zhang, Bowen Yu, Kai Dang, et~al.
+\newblock {Qwen2.5-Coder} technical report, 2024.
+\newblock URL \url{https://arxiv.org/abs/2409.12186}.
+\newblock arXiv:2409.12186.
+
+\bibitem[Jain et~al.(2024)Jain, Han, Gu, Li, Yan, Zhang, Wang, Solar-Lezama,
+  Sen, and Stoica]{jain2024livecodebench}
+Naman Jain, King Han, Alex Gu, Wen-Ding Li, Fanjia Yan, Tianjun Zhang, Sida
+  Wang, Armando Solar-Lezama, Koushik Sen, and Ion Stoica.
+\newblock {LiveCodeBench}: Holistic and contamination free evaluation of large
+  language models for code, 2024.
+\newblock URL \url{https://arxiv.org/abs/2403.07974}.
+\newblock arXiv:2403.07974.
+
+\bibitem[Jiang et~al.(2024)Jiang, Zheng, Lyu, Niu, Wang, Hu, and
+  Jin]{jiang2024rocode}
+Xue Jiang, Yihong Zheng, Yuxiang Lyu, Changjian Niu, Bin Wang, Zibin Hu, and
+  Zhi Jin.
+\newblock {ROCODE}: {I}ntegrating backtracking mechanism and program analysis
+  in large language models for code generation, 2024.
+\newblock URL \url{https://arxiv.org/abs/2411.07112}.
+\newblock arXiv:2411.07112.
+
+\bibitem[Kwon et~al.(2023)Kwon, Li, Zhuang, Sheng, Zheng, Yu, Gonzalez, Zhang,
+  and Stoica]{vllm2023}
+Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody~Hao Yu,
+  Joseph~E. Gonzalez, Hao Zhang, and Ion Stoica.
+\newblock Efficient memory management for large language model serving with
+  {PagedAttention}.
+\newblock In \emph{ACM Symposium on Operating Systems Principles}, 2023.
+\newblock URL \url{https://arxiv.org/abs/2309.06180}.
+\newblock arXiv:2309.06180.
+
+\bibitem[Leviathan et~al.(2023)Leviathan, Kalman, and
+  Matias]{leviathan2023speculative}
+Yaniv Leviathan, Matan Kalman, and Yossi Matias.
+\newblock Fast inference from transformers via speculative decoding.
+\newblock In \emph{International Conference on Machine Learning}, 2023.
+\newblock URL \url{https://arxiv.org/abs/2211.17192}.
+\newblock arXiv:2211.17192.
+
+\bibitem[Madaan et~al.(2023)Madaan, Tandon, Gupta, Hallinan, Gao, Wiegreffe,
+  Alon, Dziri, Prabhumoye, Yang, Welleck, Majumder, Gupta, Yazdanbakhsh, and
+  Clark]{madaan2023selfrefine}
+Aman Madaan, Niket Tandon, Prakhar Gupta, Skyler Hallinan, Luyu Gao, Sarah
+  Wiegreffe, Uri Alon, Nouha Dziri, Shrimai Prabhumoye, Yiming Yang, Sean
+  Welleck, Bodhisattwa~Prasad Majumder, Shashank Gupta, Amir Yazdanbakhsh, and
+  Peter Clark.
+\newblock {Self-Refine}: Iterative refinement with self-feedback.
+\newblock In \emph{Advances in Neural Information Processing Systems}, 2023.
+\newblock URL \url{https://arxiv.org/abs/2303.17651}.
+\newblock arXiv:2303.17651.
+
+\bibitem[M\"undler et~al.(2025)M\"undler, He, M\"uller, Tsankov, and
+  Vechev]{mundler2025typeconstrained}
+Niels M\"undler, Jingxuan He, Tobias M\"uller, Petar Tsankov, and Martin
+  Vechev.
+\newblock Type-constrained code generation with language models.
+\newblock In \emph{ACM SIGPLAN Conference on Programming Language Design and
+  Implementation}, 2025.
+\newblock URL \url{https://arxiv.org/abs/2504.09246}.
+\newblock arXiv:2504.09246.
+
+\bibitem[Olausson et~al.(2024)Olausson, Inala, Wang, Gao, and
+  Solar-Lezama]{olausson2024selfrepair}
+Theo~X Olausson, Jeevana~Priya Inala, Chenglong Wang, Jianfeng Gao, and Armando
+  Solar-Lezama.
+\newblock Is self-repair a silver bullet for code generation?
+\newblock In \emph{International Conference on Learning Representations}, 2024.
+\newblock URL \url{https://arxiv.org/abs/2306.09896}.
+\newblock arXiv:2306.09896.
+
+\bibitem[Poesia et~al.(2022)Poesia, Polozov, Le, Tiwari, Soares, Meek, and
+  Gulwani]{poesia2022synchromesh}
+Gabriel Poesia, Alex Polozov, Vu~Le, Ashish Tiwari, Gustavo Soares, Christopher
+  Meek, and Sumit Gulwani.
+\newblock {Synchromesh}: Reliable code generation from pre-trained language
+  models.
+\newblock In \emph{International Conference on Learning Representations}, 2022.
+\newblock URL \url{https://arxiv.org/abs/2201.11227}.
+\newblock arXiv:2201.11227.
+
+\bibitem[Ridnik et~al.(2024)Ridnik, Kredo, and Friedman]{ridnik2024alphacodium}
+Tal Ridnik, Dedy Kredo, and Itamar Friedman.
+\newblock Code generation with {AlphaCodium}: From prompt engineering to flow
+  engineering, 2024.
+\newblock URL \url{https://arxiv.org/abs/2401.08500}.
+\newblock arXiv:2401.08500.
+
+\bibitem[Scholak et~al.(2021)Scholak, Schucher, and
+  Bahdanau]{scholak2021picard}
+Torsten Scholak, Nathan Schucher, and Dzmitry Bahdanau.
+\newblock {PICARD}: Parsing incrementally for constrained auto-regressive
+  decoding from language models.
+\newblock In \emph{Empirical Methods in Natural Language Processing}, 2021.
+\newblock URL \url{https://arxiv.org/abs/2109.05093}.
+\newblock arXiv:2109.05093.
+
+\bibitem[Shinn et~al.(2023)Shinn, Cassano, Berman, Gopinath, Narasimhan, and
+  Yao]{shinn2023reflexion}
+Noah Shinn, Federico Cassano, Edward Berman, Ashwin Gopinath, Karthik
+  Narasimhan, and Shunyu Yao.
+\newblock {Reflexion}: Language agents with verbal reinforcement learning.
+\newblock In \emph{Advances in Neural Information Processing Systems}, 2023.
+\newblock URL \url{https://arxiv.org/abs/2303.11366}.
+\newblock arXiv:2303.11366.
+
+\bibitem[Tian et~al.(2025)Tian, Yin, Zhang, Wang, Zhang, Hou, Ye, and
+  Zhou]{wang2025semguard}
+Zhihao Tian, Lei Yin, Bingyu Zhang, Hongwei Wang, Shaohua Zhang, Yulei Hou,
+  Yibo Ye, and Yu~Zhou.
+\newblock {SemGuard}: Real-time semantic evaluator for correcting
+  {LLM}-generated code, 2025.
+\newblock URL \url{https://arxiv.org/abs/2509.24507}.
+\newblock arXiv:2509.24507.
+
+\bibitem[Ugare et~al.(2025)Ugare, Gumaste, Suresh, Singh, and
+  Misailovic]{ugare2025itergen}
+Shubham Ugare, Rohan Gumaste, Tarun Suresh, Gagandeep Singh, and Sasa
+  Misailovic.
+\newblock {IterGen}: Iterative semantic-aware structured {LLM} generation with
+  backtracking.
+\newblock In \emph{International Conference on Learning Representations}, 2025.
+\newblock URL \url{https://openreview.net/forum?id=ac93gRzxxV}.
+
+\bibitem[Wang et~al.(2024)Wang, Liu, Wang, Cui, Ding, Liu, and
+  Yu]{wang2024intervenor}
+Hanbin Wang, Zhenghao Liu, Shuo Wang, Ganqu Cui, Ning Ding, Zhiyuan Liu, and
+  Ge~Yu.
+\newblock {INTERVENOR}: Prompting the coding ability of {LLM}s with the
+  interactive chain of repair.
+\newblock In \emph{Findings of the Association for Computational Linguistics:
+  ACL}, 2024.
+\newblock URL \url{https://arxiv.org/abs/2311.09868}.
+\newblock arXiv:2311.09868.
+
+\bibitem[Wang(2025)]{soundcode2025github}
+Leo Wang.
+\newblock {SoundCode}: A reference implementation of async {LSP}-supervised
+  decoding.
+\newblock \url{https://github.com/leobwang/soundcode}, 2025.
+
+\bibitem[Zhou et~al.(2024)Zhou, Yan, Shlapentokh-Rothman, Wang, and
+  Wang]{zhou2024lats}
+Andy Zhou, Kai Yan, Michal Shlapentokh-Rothman, Haohan Wang, and Yu-Xiong Wang.
+\newblock Language agent tree search unifies reasoning, acting, and planning in
+  language models.
+\newblock In \emph{International Conference on Machine Learning}, 2024.
+\newblock URL \url{https://arxiv.org/abs/2310.04406}.
+\newblock arXiv:2310.04406.
+
+\end{thebibliography}
