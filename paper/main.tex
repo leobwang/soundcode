@@ -39,7 +39,7 @@
 % --- Code / inline command shorthand ---
 \newcommand{\code}[1]{\texttt{#1}}
 
-\title{Async LSP-Supervised Decoding for Code Generation}
+\title{Asynchronous Compiler-Supervised Decoding for Code Generation}
 
 % Single author for the course submission.
 \author{%
@@ -63,14 +63,17 @@ Verifier-guided code-generation systems --- Monitor-Guided Decoding
 the verifier runs \emph{synchronously} on the decoding critical path.
 The decoder stalls while the language server, compiler, or learned
 classifier returns its verdict. This is tolerable when the verifier
-is fast (Python's \code{compile()}, $g{+}{+}\;\code{-fsyntax-only}$,
-or a 1.3B classifier on one line of code), but it forecloses the
+is fast (Python's \code{compile()}, or a 1.3B classifier on one
+line of code), but it forecloses the
 use of slower, sounder oracles --- \code{cargo check} on Rust
-(${\sim}100\,\mathrm{ms}$ to several seconds), \code{javac} on Java
-(${\sim}180\,\mathrm{ms}$), or whole-crate type and lifetime analyses.
+(${\sim}35$--$500\,\mathrm{ms}$ incremental), \code{javac} on Java
+(${\sim}180\,\mathrm{ms}$), per-invocation compiler subprocesses in
+the decoding loop (${\sim}0.6\,\mathrm{s}$ amortized for
+$g{+}{+}\;\code{-fsyntax-only}$ in our setup), or whole-crate type
+and lifetime analyses taking seconds.
 We present \emph{SoundCode}, a producer-consumer decoding loop in
-which a Language Server Protocol (LSP)
-\citep{agrawal2023monitor,multilspy} verifier runs
+which a compiler verifier (\code{cargo check} for Rust,
+$g{+}{+}\;\code{-fsyntax-only}$ for C++) runs
 \emph{asynchronously} alongside the LLM, spawning a check at each
 depth-zero structural boundary (\code{;} or \code{\}}) and triggering
 rollback to the last verified checkpoint only when a returned
@@ -84,7 +87,12 @@ on MultiPL-E HumanEval-rs and HumanEval-cpp
 rollback algorithm fixed, SoundCode is $1.59\times$ faster on Rust
 ($116/156$ paired wins) and $2.95\times$ faster on C++
 ($159/161$ paired wins) than the synchronous ROCODE-style
-equivalent, while \emph{raising} C++ pass@1 from $71.4\%$ to $76.4\%$.
+equivalent. pass@1 is statistically indistinguishable between the
+two schedulings (single greedy run; McNemar exact $p\!=\!0.30$ on
+Rust, $p\!=\!0.13$ on C++), so our contribution is a pure
+\emph{latency} result: asynchronous scheduling removes the
+synchronous verifier's critical-path cost without measurably
+changing accuracy.
 Beyond the measurement, we offer a design framework
 --- when to async, when to roll back, and where to roll back --- that
 applies to any verifier whose cost is not negligible relative to a

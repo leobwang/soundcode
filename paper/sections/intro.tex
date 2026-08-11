@@ -46,9 +46,12 @@ All four share one design choice: the verifier runs
 \emph{synchronously} on the decoding critical path. The LM stops; the
 verifier returns; the LM resumes. This is invisible when the
 verifier is fast --- Python's \code{compile()} parses a partial
-program in $\sim$0.1\,ms, $g{+}{+}\;\code{-fsyntax-only}$ takes
-${\sim}3\,\mathrm{ms}$, and a 1.3B classifier evaluates one line of
-context in single-digit milliseconds on a modern GPU. ROCODE's
+program in $\sim$0.1\,ms, $g{+}{+}\;\code{-fsyntax-only}$ parses a
+warm translation unit in ${\sim}3\,\mathrm{ms}$ (though its
+per-invocation subprocess cost inside a decoding loop is far
+higher --- $\sim$$0.6$\,s amortized in our setup,
+\S\ref{sec:headline-contrast}), and a 1.3B classifier evaluates one
+line of context in single-digit milliseconds on a modern GPU. ROCODE's
 benchmarks are Python and C++ \citep{jiang2024rocode}, SemGuard's are
 Python and Java \citep{wang2025semguard}, MGD's are Java with
 hand-picked dereference triggers \citep{agrawal2023monitor}. In each
@@ -60,8 +63,9 @@ overhead \citep{mundler2025typeconstrained}. The cost is real but
 amortized away by the gain in code quality.
 
 The same design fails to scale to slower oracles. \code{cargo check}
-on a typical Rust function takes $\sim$$100$ to several hundred
-milliseconds; \code{javac} on a single Java method takes
+on a typical Rust function takes $\sim$$35$--$500$
+milliseconds incrementally (amortizing to $\sim$$0.18$\,s per call
+in our setup); \code{javac} on a single Java method takes
 ${\sim}180\,\mathrm{ms}$ once JVM startup is amortized; a
 whole-crate borrow check on an unfamiliar trait expansion can take
 seconds. A synchronous decoding loop that blocks on such an oracle
@@ -109,14 +113,15 @@ $0.82$\,s async; $1.48\times$ at the per-problem median; async beats
 sync on $116$ of $156$ paired problems, $74.4\%$) and $2.95\times$
 faster on C++ ($3.65$\,s $\to$ $1.23$\,s; $2.84\times$ at the median;
 async wins on $159$ of $161$ paired problems, $98.8\%$) than the
-synchronous ROCODE-style equivalent. The C++ result is the more
-interesting story: async \emph{simultaneously} speeds the system up
-and \emph{raises} pass@1 from $71.4\%$ to $76.4\%$ ($+5.0$\,pp). On
-Rust, sync still leads pass@1 by $3.2$\,pp ($72.4\%$ vs $69.2\%$),
-which we read not as a deficit of async but as a benchmark in which
-the cost-spectrum prediction (\S\ref{sec:when-async}) places Rust
-near the marginal regime where sync's mid-decode aborts cost less
-wall-time than its information value.
+synchronous ROCODE-style equivalent. pass@1, by contrast, does not
+separate the two schedulings: the per-language differences
+($+5.0$\,pp for async on C++, $-3.2$\,pp on Rust) amount to a
+handful of problems on a single greedy run, flip sign between
+languages, and are not statistically significant (McNemar exact
+$p\!=\!0.13$ and $p\!=\!0.30$ respectively). The claim of this paper
+is therefore a \emph{latency} claim, not a quality claim:
+asynchronous scheduling removes the synchronous verifier's
+wall-clock penalty at statistically unchanged accuracy.
 
 \paragraph{Contributions.} We frame the contribution along four axes:
 \begin{enumerate}[itemsep=2pt,topsep=2pt]
@@ -133,24 +138,32 @@ wall-time than its information value.
   that varies is whether the verifier blocks the decoder --- async
   delivers a $1.59\times$ wall-time speedup on Rust ($116/156$
   paired wins) and a $2.95\times$ speedup on C++ ($159/161$ paired
-  wins), with C++ pass@1 simultaneously rising from $71.4\%$ to
-  $76.4\%$.
+  wins), with pass@1 statistically indistinguishable between the
+  schedulings on both languages.
 \item \textbf{A verifier-cost-spectrum framing that predicts when
   async helps.} We sort verifiers along a cost spectrum (Python's
   \code{compile()} $\sim$$0.1\,\mathrm{ms}$; $g{+}{+}\;
-  \code{-fsyntax-only}$ $\sim$$3\,\mathrm{ms}$; \code{cargo check}
-  $\sim$$35\,\mathrm{ms}$; \code{javac} $\sim$$180\,\mathrm{ms}$;
+  \code{-fsyntax-only}$ $\sim$$3\,\mathrm{ms}$ warm, amortizing to
+  $\sim$$0.6$\,s per in-loop invocation in our setup;
+  \code{cargo check}
+  $\sim$$35$--$500\,\mathrm{ms}$, amortizing to
+  $\sim$$0.18$\,s; \code{javac}
+  $\sim$$180\,\mathrm{ms}$;
   whole-crate analyses up to seconds) and argue that the async design
   pays off whenever per-call verifier cost exceeds per-token decoding
   latency. The Rust-vs-C++ asymmetry in our results --- a smaller
-  win on the cheaper-verifier language --- is the first empirical
-  confirmation of this prediction.
+  win on Rust, whose verifier amortizes cheaper in-loop
+  ($\sim$$0.18$\,s/call vs C++'s $\sim$$0.6$\,s/call) --- is the
+  first empirical confirmation of this prediction.
 \item \textbf{A reproducible open-source implementation and live
   demo.} The producer is vLLM's \code{AsyncLLMEngine}
   \citep{vllm2023} run with \code{enforce\_eager=False}; the
-  verifier is rust-analyzer via \code{multilspy}
-  \citep{agrawal2023monitor,multilspy} or \code{cargo check} /
-  $g{+}{+}\;\code{-fsyntax-only}$ via subprocess. Engineering effort
+  verifier is \code{cargo check} /
+  $g{+}{+}\;\code{-fsyntax-only}$ via subprocess (the driver used
+  for every measurement in this paper). An LSP driver
+  (rust-analyzer via \code{multilspy}
+  \citep{agrawal2023monitor,multilspy}) is implemented but not
+  evaluated here (\S\ref{sec:setup}). Engineering effort
   to port to a new language is one boundary-detector and one
   verifier-driver class. Source:
   \href{https://github.com/leobwang/soundcode}%

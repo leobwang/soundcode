@@ -2,7 +2,7 @@
 
 We presented SoundCode, the first asynchronous design for
 verifier-guided code generation. The system is a producer-consumer
-decoding loop in which an LSP / compiler verifier runs in a
+decoding loop in which a compiler verifier runs in a
 background task at each depth-zero structural boundary, the producer
 LM streams tokens without blocking, and a consumer rolls back the
 buffer to the last verifier-confirmed checkpoint only on a returned
@@ -13,17 +13,17 @@ and fixed benchmark.
 
 \paragraph{Where async pays.}
 The win grows with verifier latency. Empirically, on Rust ---
-where \code{cargo check} is $\sim$$10$--$50\times$ a per-token
-decoding step --- async overlap recovers most of the verifier
-wall-time within $3.2$\,pp of the sync arm's pass@1
-($1.59\times$ speedup, $69.2\%$ async vs $72.4\%$ sync pass@1; async
-wins on $116$ of $156$ paired problems). On C++, where
-$g{+}{+}\;\code{-fsyntax-only}$'s cold-start
-$\sim$$150\,\mathrm{ms}$ dominates per-boundary cost, the win is
-larger still ($2.95\times$, with pass@1 \emph{rising} from $71.4\%$
-to $76.4\%$; async wins on $159$ of $161$ paired problems) ---
-as the cost-spectrum analysis in
-Section~\ref{sec:when-async} predicts. We expect the win to grow
+where \code{cargo check} is $\sim$$6$--$18\times$ a per-token
+decoding step in our setup --- async overlap recovers most of the verifier
+wall-time ($1.59\times$ speedup; async wins on $116$ of $156$
+paired problems). On C++, where each
+$g{+}{+}\;\code{-fsyntax-only}$ invocation amortizes to
+$\sim$$0.6$\,s of per-boundary cost, the win is
+larger still ($2.95\times$; async wins on $159$ of $161$ paired
+problems) --- as the cost-spectrum analysis in
+Section~\ref{sec:when-async} predicts. pass@1 is statistically
+indistinguishable between the schedulings on both languages
+(\S\ref{sec:main-results}); the result is a latency result. We expect the win to grow
 further on \code{javac}-supervised Java
 ($\sim$$180\,\mathrm{ms}$) and to be largest on
 whole-crate borrow / trait analysis (up to seconds), neither of
@@ -46,13 +46,24 @@ generated code. We do not address this gap; SemGuard
 \citep{wang2025semguard} is the natural complement that targets
 exactly the semantic-but-compilable failure mode.
 
-The current evaluation is also single-model and single-seed.
-Multi-seed confidence intervals and a faithful SemGuard retraining
-on Rust diagnostics are the obvious next two experiments.
+The current evaluation is also single-model and single-seed, and
+we accordingly make no accuracy claims: none of the pass@1
+differences between arms is statistically significant
+(\S\ref{sec:main-results}), and the contribution of this paper is
+confined to wall-clock latency. Five of the nine arms in the
+design space --- including the AsyncLSP arm, the only one that
+would test LSP-based (rather than compiler-based) verification ---
+were not run (\S\ref{sec:setup}), so every claim here is about
+compiler supervision. Multi-seed confidence intervals, the
+AsyncLSP arm, and a faithful SemGuard retraining on Rust
+diagnostics are the obvious next experiments.
 
 \paragraph{Future work.}
-Five extensions are immediate. (1) \emph{Oscillation-detection
-rollback.} On HumanEval-140 (\code{fix\_spaces}) under our
+Six extensions are immediate. (0) \emph{The AsyncLSP arm.} The
+rust-analyzer driver is implemented but unevaluated; measuring it
+is the missing experiment that would extend this paper's claim
+from compiler supervision to LSP supervision.
+(1) \emph{Oscillation-detection rollback.} On HumanEval-140 (\code{fix\_spaces}) under our
 \textsf{SyncCargo} arm, the model hit the 60\,s problem budget after
 emitting $66$ syntactically-valid repetition statements that all
 re-introduced the same compile error in the same place; each one was

@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2026.1.16)  25 MAY 2026 03:48
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2026.1.16)  11 AUG 2026 16:24
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -659,7 +659,7 @@ Package microtype Info: Loading generic protrusion settings for font family
 (microtype)             For optimal results, create family-specific settings.
 (microtype)             See the microtype manual for details.
 
-Underfull \hbox (badness 1389) in paragraph at lines 59--93
+Underfull \hbox (badness 1389) in paragraph at lines 59--101
 []\T1/ptm/m/n/10 (+20) Verifier-guided code-generation sys-tems --- Monitor-Gui
 ded De-cod-ing [[]],
  []
@@ -671,44 +671,48 @@ ded De-cod-ing [[]],
 st/fonts/enc/dvips/base/8r.enc}{/usr/share/texmf/fonts/enc/dvips/cm-super/cm-su
 per-t1.enc}]
 LaTeX Font Info:    Trying to load font information for TS1+ptm on input line 8
-1.
+5.
 
 (/usr/share/texlive/texmf-dist/tex/latex/psnfss/ts1ptm.fd
 File: ts1ptm.fd 2001/06/04 font definitions for TS1/ptm.
-) [2])
-(./sections/related_work.tex
-<figures/mgd_workflow.pdf, id=175, 359.76608pt x 131.16302pt>
+)
+Underfull \vbox (badness 4954) has occurred while \output is active []
+
+ [2])
+(./sections/related_work.tex [3]
+<figures/mgd_workflow.pdf, id=190, 359.76608pt x 131.16302pt>
 File: figures/mgd_workflow.pdf Graphic file (type pdf)
 <use figures/mgd_workflow.pdf>
 Package pdftex.def Info: figures/mgd_workflow.pdf  used on input line 38.
 (pdftex.def)             Requested size: 310.0378pt x 113.03616pt.
- [3]
-<figures/rocode_workflow.pdf, id=197, 333.83923pt x 257.40866pt>
+<figures/rocode_workflow.pdf, id=195, 333.83923pt x 257.40866pt>
 File: figures/rocode_workflow.pdf Graphic file (type pdf)
 <use figures/rocode_workflow.pdf>
 Package pdftex.def Info: figures/rocode_workflow.pdf  used on input line 67.
 (pdftex.def)             Requested size: 310.0378pt x 239.07335pt.
- [4 <./figures/mgd_workflow.pdf> <./figures/rocode_workflow.pdf>]
-<figures/semguard_workflow.pdf, id=317, 445.41707pt x 189.74088pt>
+<figures/semguard_workflow.pdf, id=200, 445.41707pt x 189.74088pt>
 File: figures/semguard_workflow.pdf Graphic file (type pdf)
 <use figures/semguard_workflow.pdf>
 Package pdftex.def Info: figures/semguard_workflow.pdf  used on input line 96.
 (pdftex.def)             Requested size: 310.0378pt x 132.07362pt.
- [5 <./figures/semguard_workflow.pdf>])
-(./sections/method.tex
-<figures/architecture.pdf, id=404, 437.93413pt x 281.00887pt>
+ [4 <./figures/mgd_workflow.pdf>] [5 <./figures/rocode_workflow.pdf> <./figures
+/semguard_workflow.pdf>])
+(./sections/method.tex [6]
+<figures/architecture.pdf, id=413, 437.93413pt x 281.00887pt>
 File: figures/architecture.pdf Graphic file (type pdf)
 <use figures/architecture.pdf>
 Package pdftex.def Info: figures/architecture.pdf  used on input line 18.
 (pdftex.def)             Requested size: 397.48499pt x 255.0667pt.
- [6]
-<figures/soundcode_workflow.pdf, id=418, 431.50308pt x 225.36798pt>
+<figures/soundcode_workflow.pdf, id=415, 431.50308pt x 225.36798pt>
 File: figures/soundcode_workflow.pdf Graphic file (type pdf)
 <use figures/soundcode_workflow.pdf>
 Package pdftex.def Info: figures/soundcode_workflow.pdf  used on input line 64.
 
 (pdftex.def)             Requested size: 337.86465pt x 176.46031pt.
 
+Underfull \vbox (badness 1910) has occurred while \output is active []
+
+ [7 <./figures/architecture.pdf>]
 
 LaTeX Font Warning: Font shape `T1/ptm/m/scit' undefined
 (Font)              using `T1/ptm/m/sc' instead on input line 130.
@@ -717,51 +721,55 @@ LaTeX Font Warning: Font shape `T1/ptm/m/scit' undefined
 LaTeX Font Warning: Font shape `T1/ptm/m/scit' undefined
 (Font)              using `T1/ptm/m/sc' instead on input line 130.
 
-
-Underfull \vbox (badness 1552) has occurred while \output is active []
-
- [7 <./figures/architecture.pdf>] [8 <./figures/soundcode_workflow.pdf>] [9])
-(./sections/results.tex [10]
-LaTeX Font Info:    Trying to load font information for T1+phv on input line 76
+[8 <./figures/soundcode_workflow.pdf>] [9] [10]) (./sections/results.tex
+[11]
+LaTeX Font Info:    Trying to load font information for T1+phv on input line 87
 .
-
-(/usr/share/texlive/texmf-dist/tex/latex/psnfss/t1phv.fd
+ (/usr/share/texlive/texmf-dist/tex/latex/psnfss/t1phv.fd
 File: t1phv.fd 2020/03/25 scalable font definitions for T1/phv.
 )
 Package microtype Info: Loading generic protrusion settings for font family
 (microtype)             `phv' (encoding: T1).
 (microtype)             For optimal results, create family-specific settings.
 (microtype)             See the microtype manual for details.
-<figures/plot_walltime_bars.pdf, id=599, 319.48672pt x 183.14372pt>
+<figures/plot_walltime_bars.pdf, id=613, 319.48672pt x 183.14372pt>
 File: figures/plot_walltime_bars.pdf Graphic file (type pdf)
 <use figures/plot_walltime_bars.pdf>
-Package pdftex.def Info: figures/plot_walltime_bars.pdf  used on input line 104
+Package pdftex.def Info: figures/plot_walltime_bars.pdf  used on input line 115
 .
 (pdftex.def)             Requested size: 337.86465pt x 193.68707pt.
- [11]
-<figures/plot_speedup_scatter.pdf, id=623, 255.16548pt x 208.44826pt>
+
+Underfull \vbox (badness 7832) has occurred while \output is active []
+
+ [12 <./figures/plot_walltime_bars.pdf>]
+<figures/plot_speedup_scatter.pdf, id=677, 255.16548pt x 208.44826pt>
 File: figures/plot_speedup_scatter.pdf Graphic file (type pdf)
 <use figures/plot_speedup_scatter.pdf>
 Package pdftex.def Info: figures/plot_speedup_scatter.pdf  used on input line 1
-50.
+87.
 (pdftex.def)             Requested size: 238.49341pt x 194.8345pt.
- [12 <./figures/plot_walltime_bars.pdf>]
-<figures/plot_rollback_dist.pdf, id=681, 354.26488pt x 251.58542pt>
+
+Underfull \vbox (badness 7397) has occurred while \output is active []
+
+ [13 <./figures/plot_speedup_scatter.pdf>]
+<figures/plot_rollback_dist.pdf, id=729, 354.26488pt x 251.58542pt>
 File: figures/plot_rollback_dist.pdf Graphic file (type pdf)
 <use figures/plot_rollback_dist.pdf>
-Package pdftex.def Info: figures/plot_rollback_dist.pdf  used on input line 203
+Package pdftex.def Info: figures/plot_rollback_dist.pdf  used on input line 243
 .
 (pdftex.def)             Requested size: 337.86465pt x 239.9453pt.
- [13 <./figures/plot_speedup_scatter.pdf>]
-<figures/plot_overhead_share.pdf, id=734, 289.22366pt x 185.27356pt>
+
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
+ [14 <./figures/plot_rollback_dist.pdf>]
+<figures/plot_overhead_share.pdf, id=777, 289.22366pt x 185.27356pt>
 File: figures/plot_overhead_share.pdf Graphic file (type pdf)
 <use figures/plot_overhead_share.pdf>
-Package pdftex.def Info: figures/plot_overhead_share.pdf  used on input line 26
+Package pdftex.def Info: figures/plot_overhead_share.pdf  used on input line 30
 7.
 (pdftex.def)             Requested size: 337.86465pt x 216.43274pt.
-)
-(./sections/conclusion.tex [14 <./figures/plot_rollback_dist.pdf>] [15 <./figur
-es/plot_overhead_share.pdf>]) (./main.bbl [16]) [17] (./main.aux)
+) (./sections/conclusion.tex [15 <./figures/plot_overhead_share.pdf>]) (./main.
+bbl [16] [17]) [18] (./main.aux)
  ***********
 LaTeX2e <2023-11-01> patch level 1
 L3 programming layer <2024-01-22>
@@ -770,11 +778,11 @@ Package rerunfilecheck Info: File `main.out' has not changed.
 (rerunfilecheck)             Checksum: 32B7E32FBEF2F4A891B97BD8E2EEC68D;4318.
  ) 
 Here is how much of TeX's memory you used:
- 17064 strings out of 474222
- 263671 string characters out of 5748733
+ 17078 strings out of 474222
+ 263824 string characters out of 5748733
  1943975 words of memory out of 5000000
  38481 multiletter control sequences out of 15000+600000
- 649620 words of font info for 371 fonts, out of 8000000 for 9000
+ 650465 words of font info for 383 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
  75i,19n,79p,1001b,642s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></us
@@ -802,10 +810,10 @@ onts/type1/urw/helvetic/uhvr8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/u
 rw/times/utmb8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmbi8
 a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmr8a.pfb></usr/sha
 re/texlive/texmf-dist/fonts/type1/urw/times/utmri8a.pfb>
-Output written on main.pdf (17 pages, 537831 bytes).
+Output written on main.pdf (18 pages, 543231 bytes).
 PDF statistics:
- 998 PDF objects out of 1000 (max. 8388607)
- 720 compressed objects within 8 object streams
- 146 named destinations out of 1000 (max. 500000)
+ 1007 PDF objects out of 1200 (max. 8388607)
+ 728 compressed objects within 8 object streams
+ 143 named destinations out of 1000 (max. 500000)
  81142 words of extra memory for PDF output out of 89155 (max. 10000000)
 

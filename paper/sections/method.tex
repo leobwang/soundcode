@@ -93,7 +93,7 @@ line~\ref{algline:rb-test} acts on already-completed verifier tasks
 rather than blocking on the just-scheduled one.
 
 \begin{algorithm}[t]
-\caption{SoundCode async LSP-supervised decoding.}\label{alg:soundcode}
+\caption{SoundCode asynchronous compiler-supervised decoding.}\label{alg:soundcode}
 \KwIn{prompt $x$; LM $\mathcal{M}$; verifier $\mathcal{V}$; boundary
   detector $\mathcal{B}$; rollback policy $\pi$}
 \KwOut{verified completion $y$}
@@ -132,7 +132,7 @@ buffer $y \gets$ empty\;
 
 The algorithm is parameterized by the rollback policy $\pi$, which
 maps a (buffer, diagnostic, checkpoint set) triple to a token
-offset. Three concrete instantiations are studied in
+offset. Three concrete instantiations are defined in
 Section~\ref{sec:where-rollback}: \textsc{NaiveLast} (return
 $\max C$), \textsc{ROCODEEntropy} (try error-line offset, fall back
 to max-entropy on recurrence), and \textsc{NaiveLast+Penalty} (return
@@ -155,7 +155,7 @@ closest-neighbour systems along this axis.
   for a 7B-class model. The async / sync prediction is whether
   per-call verifier cost exceeds per-token LM cost.}
 \label{tab:verifier-cost}
-\small
+\footnotesize
 \begin{tabular}{lllc}
 \toprule
 Verifier & Used by & Typical per-call cost & Async pays? \\
@@ -171,9 +171,9 @@ LSP completions (Java JDT) & MGD \citep{agrawal2023monitor}
 \code{cargo check} (incremental) & SoundCode (this work)
   & ${\sim}35$--$500\,\mathrm{ms}$ & yes \\
 \code{javac} (warm JVM) & --- & ${\sim}180\,\mathrm{ms}$ & yes \\
-LSP completions (rust-analyzer) & SoundCode (this work)
+LSP completions (rust-analyzer) & SoundCode (unevaluated)
   & ${\sim}50$--$300\,\mathrm{ms}$ & yes \\
-Whole-crate borrow / trait analysis & SoundCode (this work)
+Whole-crate borrow / trait analysis & --- (unevaluated)
   & ${\sim}500\,\mathrm{ms}$--several\,s & strongly yes \\
 \bottomrule
 \end{tabular}
@@ -185,10 +185,14 @@ time, synchronous verification is the right design --- the
 synchronization overhead of spawning, polling, and awaiting will
 exceed the saved blocking time, and the simpler architecture is
 preferred. ROCODE's choice of synchronous integration is correct
-for Python and C++; SoundCode's contribution is to show what happens
-when this inequality flips. On Rust, \code{cargo check} alone is
-already $\sim$$10$--$50\times$ a per-token decoding step; the
-trade-off is no longer marginal. Section~\ref{sec:results} measures
+in the millisecond-verifier regime it measured (Python's
+\code{compile()}; warm single-file $g{+}{+}$ parses); SoundCode's
+contribution is to show what happens when this inequality flips.
+In our decoding loop, per-invocation $g{+}{+}$ cost amortizes to
+$\sim$$0.6$\,s (\S\ref{sec:headline-contrast}), which already
+flips the inequality on C++; on Rust, \code{cargo check} amortizes
+to $\sim$$0.18$\,s --- $\sim$$6$--$18\times$ a per-token decoding
+step; the trade-off is no longer marginal. Section~\ref{sec:results} measures
 these per-language costs empirically and confirms that async
 delivers wall-time wins at the $\sim$$150\,\mathrm{ms}$-or-more
 per-call verifier cost regime ($g{+}{+}\;\code{-fsyntax-only}$
@@ -246,8 +250,9 @@ A too-permissive classifier (everything is \textsc{Incomplete} or
 \textsc{NonBlocking}) collapses SoundCode to vanilla decoding; a
 too-strict classifier (everything is \textsc{Blocking}) collapses it
 to whole-program retry. We treat the classifier as a
-hyperparameter and ablate it in
-Section~\ref{sec:results-ablation-classifier}.
+hyperparameter, but the planned sweep is deferred; all experiments
+in this paper use a single fixed compiler-derived classifier
+(\S\ref{sec:results-ablation-classifier}).
 
 \subsection{Where to roll back: rollback policies}\label{sec:where-rollback}
 
@@ -262,22 +267,27 @@ grammar non-terminal name.
 
 We unify all four under a \emph{rollback policy} $\pi$ that maps
 (buffer, diagnostic, checkpoint set) to a token offset. Three
-instantiations are studied empirically; the punchline of the
+instantiations are defined below; two of them (\textsc{NaiveLast}
+and \textsc{ROCODEEntropy}) are evaluated empirically, while
+\textsc{NaiveLast+Penalty} is specified for completeness but not
+evaluated in this paper (\S\ref{sec:setup}). The punchline of the
 ablation (Section~\ref{sec:results-ablation-policy}) is that
-naive last-checkpoint is the right default on this benchmark, and
-ROCODE's max-entropy fallback is empirically neutral here because
-the rollback-rate is too low for the recurrence case to matter.
+naive last-checkpoint is the right default on this benchmark:
+ROCODE's max-entropy fallback ties it on C++ and trails it on
+Rust.
 
 \paragraph{\textsc{NaiveLast} (default, and the empirical winner).}
 Return $\max C$, the largest token index that has been
 verifier-confirmed. The \emph{ratchet} invariant: the buffer never
 regresses past a token that the verifier has cleared. This is the
 simplest sound policy and the one we recommend on HumanEval-class
-benchmarks. The intuition is that with a strong code LM, the
-empirical rollback rate is well under one rollback per problem
-(Section~\ref{sec:results-ablation-policy}), so most problems never
-exercise the policy's fallback branch and the simpler target is
-exactly as good as a smarter one.
+benchmarks. The intuition is that with a strong code LM, most
+problems never trigger a rollback at all ($132/156$ Rust and
+$155/161$ C++ problems under AsyncCargo-Naive;
+Section~\ref{sec:results-ablation-policy}), and on the firing
+minority rollback recurs to the budget cap under either
+target-selection policy, so the simpler target performs no worse
+than a smarter one.
 
 \paragraph{\textsc{ROCODEEntropy}.} Reproduce ROCODE's two-rule
 formulation. First call: return the diagnostic's error-line offset
@@ -294,7 +304,9 @@ multi-rollback problems.
 target selection, plus ROCODE's $\lambda^{t-r}$ token penalty
 \citep[Eq.~8--9]{jiang2024rocode} applied to all tokens after $r$ in
 the retry distribution. The intent is to discourage immediate
-re-emission of the same erroneous prefix.
+re-emission of the same erroneous prefix. This policy is
+implemented but not evaluated in this paper's experiments
+(\S\ref{sec:setup}).
 
 \paragraph{Future work.} Three natural extensions are out of
 scope for the present paper but supported by the same algorithm.
@@ -323,9 +335,10 @@ vLLM 0.20.x's \code{AsyncLLMEngine}, used directly via its
 
 Verifiers are pluggable. The Rust path uses \code{cargo check}
 shelled out via \code{subprocess} on a per-problem workspace and
-parsed via the JSON message format; the LSP path uses
+parsed via the JSON message format; an LSP path using
 \code{multilspy} \citep{agrawal2023monitor,multilspy} bound to
-rust-analyzer 0.3.x.
+rust-analyzer 0.3.x is implemented but not exercised by any
+experiment reported here (\S\ref{sec:setup}).
 For C++ we use $g{+}{+}\;\code{-fsyntax-only}$ via \code{subprocess}.
 Each language has a tiny \code{BoundaryDetector} class
 ($\leq$50 LoC) that returns boolean ``is this position a depth-0

@@ -165,8 +165,8 @@ fixed-point and verifying cached $n$-grams in parallel inside the
 same model, reaching $1.5\times$--$2.3\times$ on a single A100 and
 up to $4\times$ with Lookahead Parallelism on 8 A100s.
 SoundCode swaps the LM-as-verifier for a \emph{semantic} verifier
-(\code{cargo check} + LSP) and replaces per-token rollback with
-structural-boundary rollback. The control-flow skeleton --- producer
+(\code{cargo check} / $g{+}{+}\;\code{-fsyntax-only}$) and replaces
+per-token rollback with structural-boundary rollback. The control-flow skeleton --- producer
 runs ahead, verifier runs in parallel, on rejection rollback to a
 prior accept --- is the same.
 
@@ -197,7 +197,8 @@ We evaluate on MultiPL-E HumanEval-rs and HumanEval-cpp
 original HumanEval benchmark \citep{chen2021humaneval}; the source
 problems are 164 hand-written Python signatures plus docstrings,
 mechanically translated to Rust and C++ with native-language unit
-tests preserved. The base model is Qwen2.5-Coder-7B-Instruct
+tests preserved ($156$ Rust and $161$ C++ translations survive the
+benchmark's filtering). The base model is Qwen2.5-Coder-7B-Instruct
 \citep{hui2024qwen25coder}, a frontier open-weight code LM in the
 7B class.
 
