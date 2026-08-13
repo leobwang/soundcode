@@ -1,0 +1,9 @@
+{
+  "finished_at": 1786604346.9262233,
+  "arms_run": [
+    "async_penalty_rust",
+    "async_penalty_cpp",
+    "sync_penalty_rust",
+    "sync_penalty_cpp"
+  ]
+}
