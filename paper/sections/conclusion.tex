@@ -23,12 +23,14 @@ larger still ($2.95\times$; async wins on $159$ of $161$ paired
 problems) --- as the cost-spectrum analysis in
 Section~\ref{sec:when-async} predicts. pass@1 is statistically
 indistinguishable between the schedulings on both languages
-(\S\ref{sec:main-results}); the result is a latency result. We expect the win to grow
-further on \code{javac}-supervised Java
-($\sim$$180\,\mathrm{ms}$) and to be largest on
-whole-crate borrow / trait analysis (up to seconds), neither of
-which we evaluate here but both of which the same architecture
-supports without modification.
+(\S\ref{sec:main-results}); the result is a latency result. The
+follow-up's LSP measurement (\S\ref{sec:extended}) adds a
+refinement: the win saturates once a single check approaches
+total decode time. A \code{javac}-supervised Java evaluation is
+in progress in the follow-up and not reported at this revision;
+whole-crate borrow / trait analysis (up to seconds per check)
+remains unevaluated, though the same architecture supports both
+without modification.
 
 \paragraph{Limitations.}
 The matched-budget caveat from \citet{olausson2024selfrepair}
@@ -50,19 +52,23 @@ The current evaluation is also single-model and single-seed, and
 we accordingly make no accuracy claims: none of the pass@1
 differences between arms is statistically significant
 (\S\ref{sec:main-results}), and the contribution of this paper is
-confined to wall-clock latency. Five of the nine arms in the
-design space --- including the AsyncLSP arm, the only one that
-would test LSP-based (rather than compiler-based) verification ---
-were not run (\S\ref{sec:setup}), so every claim here is about
-compiler supervision. Multi-seed confidence intervals, the
-AsyncLSP arm, and a faithful SemGuard retraining on Rust
-diagnostics are the obvious next experiments.
+confined to wall-clock latency. The post-deadline follow-up
+(\S\ref{sec:extended}) closes several of the original scoping
+gaps --- the AsyncLSP arm (the sync-async contrast reproduces at
+$1.70\times$, with the win saturating once a single check
+approaches total decode time), the fully-wired
+\textsc{ROCODEEntropy} policy, five full-grid replications, and a
+matched-budget resampling baseline that \emph{beats} in-loop
+verification on Rust batch pass@1 --- the last of which sharpens
+this paper's scope: on HumanEval-class batch evaluation,
+resample-and-filter is the stronger default, and in-loop
+verification's case rests on streaming latency, bounded tails,
+and long-generation salvage that this benchmark does not measure.
+The \textsc{Penalty} arms and a faithful SemGuard retraining on
+Rust diagnostics remain the obvious next experiments.
 
 \paragraph{Future work.}
-Six extensions are immediate. (0) \emph{The AsyncLSP arm.} The
-rust-analyzer driver is implemented but unevaluated; measuring it
-is the missing experiment that would extend this paper's claim
-from compiler supervision to LSP supervision.
+Five extensions are immediate.
 (1) \emph{Oscillation-detection rollback.} On HumanEval-140 (\code{fix\_spaces}) under our
 \textsf{SyncCargo} arm, the model hit the 60\,s problem budget after
 emitting $66$ syntactically-valid repetition statements that all

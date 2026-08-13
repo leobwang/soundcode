@@ -41,25 +41,22 @@ plus \textbf{AsyncLSP} (rust-analyzer via \code{multilspy} as
 verifier, \textsc{NaiveLast} policy) and \textbf{ROCODE-upstream}
 (the published ROCODE implementation).
 
-Of these nine, this paper reports \textbf{four}, each run on both
-languages: Vanilla, SyncCargo\,+\,\textsc{NaiveLast},
+Of these nine, the Phase-1 grid reports \textbf{four}, each run on
+both languages: Vanilla, SyncCargo\,+\,\textsc{NaiveLast},
 AsyncCargo\,+\,\textsc{NaiveLast}, and
-AsyncCargo\,+\,\textsc{RecBackoff}. The remaining arms were
-\emph{not run} before the deadline and no results for them appear
-anywhere in this paper: SyncCargo\,+\,\textsc{RecBackoff}, both
-\textsc{NaiveLast+Penalty} arms, AsyncLSP, and ROCODE-upstream
-(the last skipped for the separate reason documented in
-\S\ref{sec:results-rocode}). Two consequences of this scoping bear
-stating explicitly. First, every measurement in this paper is
-\emph{compiler}-supervised; the LSP verifier driver is implemented
-in the released code but was never evaluated, so no claim here
-extends to LSP-based verification. Second, the rollback-policy
-ablation (\S\ref{sec:results-ablation-policy}) is available only
-under async scheduling and compares \textsc{NaiveLast} against
-\textsc{RecBackoff} --- ROCODE's full entropy-based target
-selection was not wired into the sampler and is not evaluated
-anywhere in this paper (\S\ref{sec:where-rollback}), and the
-\textsc{Penalty} policy is likewise specified but unevaluated.
+AsyncCargo\,+\,\textsc{RecBackoff}. Every Phase-1 measurement
+(Table~\ref{tab:main} and \S\S\ref{sec:main-results}--\ref{sec:results-ablation-policy})
+is therefore \emph{compiler}-supervised, and the Phase-1
+rollback-policy ablation compares \textsc{NaiveLast} against
+\textsc{RecBackoff} only. A post-deadline follow-up
+(\S\ref{sec:extended}) adds the arms the original scoping cut:
+the fully-wired \textsc{ROCODEEntropy} policy (async, both
+languages), AsyncLSP plus a SyncLSP companion (rust-analyzer as
+verifier), and a matched-budget resampling baseline outside the
+original nine. Still unevaluated at this revision:
+SyncCargo\,+\,\textsc{RecBackoff}, the
+\textsc{NaiveLast+Penalty} arms, and ROCODE-upstream (skipped for
+the separate reason documented in \S\ref{sec:results-rocode}).
 
 \paragraph{Metrics.}
 pass@1, mean wall-clock time per problem (seconds), mean rollback
@@ -265,6 +262,96 @@ evaluated.
     than the sync boundary stalls they replace.}
   \label{fig:rollback-dist}
 \end{figure}
+
+\subsection{Extended arms (post-deadline follow-up)}\label{sec:extended}
+
+The arms below were run after the original submission, on the same
+model, hardware, benchmark revision, and decoding configuration as
+Phase~1; raw records are committed alongside the Phase-1 data.
+
+\paragraph{ROCODEEntropy, fully wired.} We wired ROCODE's complete
+target-selection rule into the sampler --- per-token Shannon
+entropies from the top-20 logprobs, error-line offset $r_e$ on the
+first rollback for an error, max-entropy line $r_h$ on recurrence
+--- and re-ran the async arms. The verdict from the
+\textsc{RecBackoff} proxy stands. On C++, the wired rule ties
+\textsc{NaiveLast} and \textsc{RecBackoff} exactly ($123/161$
+pass@1; all pairwise McNemar $p\!=\!1.0$). On Rust it scores
+$66.0\%$ ($103/156$) --- identical to \textsc{RecBackoff}
+($1$~vs~$1$ discordant, $p\!=\!1.0$), non-significantly below
+\textsc{NaiveLast} on pass@1 ($p\!=\!0.13$), significantly below
+it on compile rate ($1$~vs~$10$, $p\!=\!0.012$), and significantly
+below \textsf{Vanilla} on pass@1 ($0$~vs~$6$, $p\!=\!0.031$).
+Entropy-targeted rollback does not rescue the recurrence-heavy
+minority on this benchmark; it only relocates the rollback target
+inside problems that fail under every policy. (The wired arm's
+wall-times, $1.23$\,s Rust / $1.41$\,s C++, are not comparable to
+Table~\ref{tab:main}: computing top-20 logprobs slows decoding for
+every token.)
+
+\paragraph{LSP verification.} With the repaired rust-analyzer
+driver (below), we ran the AsyncLSP arm --- and a SyncLSP
+companion --- on Rust. Three results. \emph{First, the LSP tier is
+not vestigial once the driver is correct}: blocking diagnostics
+fire and roll back ($36$ rollbacks across $6$ problems async;
+$40$ across $10$ sync), in contrast to earlier project experiments
+in which the LSP tier never blocked. Much of that earlier null
+result traces to a driver bug rather than to rust-analyzer itself:
+the shipped multilspy-based checker never delivered content
+updates the server acted on (rust-analyzer computes rustc-class
+diagnostics via its embedded \code{cargo check} only on
+\code{didSave}, which the driver never sent), so every check after
+the first returned the first check's diagnostics. \emph{Second},
+accuracy matches the compiler arms: async-LSP passes $108/156$
+(the same count as async-cargo, differing on two problems; vs
+\textsf{Vanilla} $p\!=\!1.0$),
+sync-LSP $114/156$ (vs \textsf{Vanilla} $p\!=\!0.30$).
+\emph{Third}, the sync-vs-async contrast reproduces at LSP-grade
+verifier cost: $4.34$\,s sync vs $2.55$\,s async at the means
+($1.70\times$; async faster on $136/156$ paired problems, median
+per-problem ratio $1.49\times$). Two honest caveats. LSP
+verification is strictly dominated by \code{cargo check} here ---
+same pass@1 at ${\sim}3\times$ async-cargo's wall-time
+($2.55$\,s vs $0.82$\,s) --- and the $1.70\times$ ratio sits
+\emph{below} C++'s $2.95\times$ despite the costlier per-check
+verifier, which refines the cost-spectrum model of
+\S\ref{sec:when-async}: once a single check ($\sim$$1$--$2$\,s)
+approaches the total decode time, the final end-of-stream verdict
+--- which async must await for correctness --- cannot be hidden,
+and the async win saturates. The prediction ``async pays when
+per-check cost exceeds per-token cost'' holds; the win is largest
+when per-check cost is also \emph{small relative to total decode
+time}.
+
+\paragraph{Matched-budget resampling baseline.} The bar any
+in-loop verification system must clear
+\citep{olausson2024selfrepair} is post-hoc filtering under the
+same budget. Our baseline samples complete candidates at
+$T\!=\!0.8$ (seeded per sample) and submits the first that
+\emph{compiles} --- the compiler as a post-hoc filter rather than
+an in-loop supervisor; unit tests are never consulted during
+selection. On Rust it is the strongest arm in this paper:
+$120/156$ pass@1 ($76.9\%$) at $1.12$\,s mean wall and $1.39$
+samples per problem --- significantly above async in-loop
+verification on both pass@1 ($20$~vs~$8$ discordant,
+$p\!=\!0.036$) and compile rate ($155/156$; $20$~vs~$0$,
+$p\!<\!0.001$), and above \textsf{Vanilla} on pass@1 at the edge
+of significance ($p\!=\!0.052$). On C++ it ties on pass@1
+($120/161$ vs async's $123$, $p\!=\!0.68$; vs \textsf{Vanilla}
+$p\!=\!0.54$) while still beating async in-loop verification on
+compile rate ($160/161$; $6$~vs~$0$ discordant, $p\!=\!0.031$;
+the same contrast vs \textsf{Vanilla} is $5$~vs~$0$,
+$p\!=\!0.063$) at higher wall ($1.87$\,s vs $1.23$\,s). Two
+qualifications: the baseline decodes at $T\!=\!0.8$ while the
+verified arms are greedy, so this is a system-level comparison,
+not a one-variable ablation; and it emits $1.4$--$1.5\times$ the
+tokens (whole candidates are discarded, not suffixes). The honest
+synthesis: \emph{for batch pass@1 on HumanEval-class problems,
+resample-and-filter is the stronger default}, and the case for
+in-loop verification rests on what resampling cannot provide ---
+a monotonically growing verified prefix (streaming/interactive
+use), bounded per-problem tail latency, and the larger salvage
+value of long generations, none of which this benchmark measures.
 
 \subsection{Ablation: diagnostic classifier}\label{sec:results-ablation-classifier}
 

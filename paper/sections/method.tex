@@ -274,15 +274,17 @@ grammar non-terminal name.
 
 We unify all four under a \emph{rollback policy} $\pi$ that maps
 (buffer, diagnostic, checkpoint set) to a token offset. Four
-instantiations are defined below; two of them (\textsc{NaiveLast}
-and \textsc{RecBackoff}) are evaluated empirically, while
-\textsc{ROCODEEntropy} as published and \textsc{NaiveLast+Penalty}
-are specified for completeness but not
-evaluated in this paper (\S\ref{sec:setup}). The punchline of the
-ablation (Section~\ref{sec:results-ablation-policy}) is that
+instantiations are defined below; three (\textsc{NaiveLast},
+\textsc{RecBackoff}, and --- in the post-deadline follow-up ---
+the fully-wired \textsc{ROCODEEntropy}) are evaluated
+empirically, while \textsc{NaiveLast+Penalty}
+is specified for completeness but not
+evaluated at this revision (\S\ref{sec:setup}). The punchline of
+the ablations (\S\ref{sec:results-ablation-policy},
+\S\ref{sec:extended}) is that
 naive last-checkpoint is the right default on this benchmark:
-the recurrence-gated back-off ties it on C++ and trails it on
-Rust.
+both the recurrence-gated back-off and the full entropy rule tie
+it on C++ and trail it on Rust.
 
 \paragraph{\textsc{NaiveLast} (default, and the empirical winner).}
 Return $\max C$, the most recent boundary checkpoint. As
@@ -313,18 +315,18 @@ This is the policy evaluated against \textsc{NaiveLast} in
 Section~\ref{sec:results-ablation-policy}; it hurt or tied
 \textsc{NaiveLast} on this benchmark.
 
-\paragraph{\textsc{ROCODEEntropy} (specified, not evaluated).}
+\paragraph{\textsc{ROCODEEntropy} (evaluated in follow-up).}
 ROCODE's full two-rule formulation. First call: return the
 diagnostic's error-line offset
 $r_e$. Second call with the same error at the same line: return
 $r_h$, the line containing $\arg\max_t H_t$, where $H_t$ is the
 Shannon entropy of $\mathcal{M}$'s distribution at position $t$
-\citep[Eq.~5]{jiang2024rocode}. We state plainly: our
-implementation instantiates ROCODE's recurrence detector but does
-not feed the token-level entropy stream from the sampler into the
-target selection, so the full rule was not evaluated in this
-paper's experiments --- \textsc{RecBackoff} above is the portion
-that ran.
+\citep[Eq.~5]{jiang2024rocode}. In Phase~1 only the recurrence
+detector was wired (\textsc{RecBackoff} above); the post-deadline
+follow-up feeds real per-token entropies from the sampler's
+top-20 logprobs and evaluates the complete rule
+(\S\ref{sec:extended}) --- it ties \textsc{RecBackoff} on both
+languages.
 
 \paragraph{\textsc{NaiveLast+Penalty}.} \textsc{NaiveLast} for
 target selection, plus ROCODE's $\lambda^{t-r}$ token penalty

@@ -1,0 +1,14 @@
+{
+  "finished_at": 1786596668.7764802,
+  "arms_run": [
+    "async_entropy2_rust",
+    "async_entropy2_cpp",
+    "async_lsp_rust",
+    "sync_lsp_rust",
+    "plain_java",
+    "sync_naive_java",
+    "async_naive_java",
+    "resample_rust",
+    "resample_cpp"
+  ]
+}
