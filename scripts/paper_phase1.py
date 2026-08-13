@@ -107,6 +107,15 @@ EXTRA_ARMS: list[dict[str, Any]] = [
     # Matched-budget resampling baseline (compiler as post-hoc filter).
     {"id": "resample_rust",       "lang": "rust", "mode": "resample"},
     {"id": "resample_cpp",        "lang": "cpp",  "mode": "resample"},
+    # NaiveLast+Penalty (ROCODE Eq. 8-9 via engine-side V1 processor).
+    {"id": "async_penalty_rust",  "lang": "rust", "mode": "soundcode",
+     "scheduling": "async", "rollback": "penalty"},
+    {"id": "async_penalty_cpp",   "lang": "cpp",  "mode": "soundcode",
+     "scheduling": "async", "rollback": "penalty"},
+    {"id": "sync_penalty_rust",   "lang": "rust", "mode": "soundcode",
+     "scheduling": "sync",  "rollback": "penalty"},
+    {"id": "sync_penalty_cpp",    "lang": "cpp",  "mode": "soundcode",
+     "scheduling": "sync",  "rollback": "penalty"},
 ]
 
 
@@ -399,9 +408,15 @@ def load_humaneval(lang: str, family: str = "humaneval") -> list[Problem]:
 # ─── vLLM engine ───────────────────────────────────────────────────────────
 
 
-def build_vllm_engine(model_name: str = MODEL_NAME):
+def build_vllm_engine(model_name: str = MODEL_NAME,
+                      with_penalty: bool = False):
     """Build an AsyncLLMEngine with the winning config: enforce_eager=False,
     gpu_memory_utilization=0.78, cudagraph_capture_sizes=[1,2,4].
+
+    `with_penalty` registers the engine-side ROCODE penalty processor
+    (soundcode.rocode_penalty_v1). Only set for penalty arms — it is
+    per-request inert without extra_args, but keeping the default engine
+    config byte-identical preserves replication comparability.
     """
     from vllm import AsyncEngineArgs, AsyncLLMEngine
     from soundcode.vllm_model_registry import resolve
@@ -423,6 +438,9 @@ def build_vllm_engine(model_name: str = MODEL_NAME):
     )
     if reg.get("quantization") is not None:
         engine_kwargs["quantization"] = reg["quantization"]
+    if with_penalty:
+        engine_kwargs["logits_processors"] = [
+            "soundcode.rocode_penalty_v1.RocodePenaltyV1"]
     args = AsyncEngineArgs(**engine_kwargs)
     return AsyncLLMEngine.from_engine_args(args)
 
@@ -642,6 +660,12 @@ async def run_soundcode(
         )
         rocode_proc = RocodeTriePenaltyProcessor(lam=0.9)
         rocode_decider = StrategicRollbackDecider(trie=rocode_proc.trie)
+    elif rollback == "penalty":
+        # Host-side trie for the NaiveLast+Penalty policy; the engine-side
+        # multiplier lives in soundcode.rocode_penalty_v1 and receives the
+        # serialized cursor subtree via SamplingParams.extra_args.
+        from soundcode.rocode_processor import RocodeTriePenaltyProcessor
+        rocode_proc = RocodeTriePenaltyProcessor(lam=0.9)
 
     n_tokens = 0
     n_rollbacks = 0
@@ -654,6 +678,10 @@ async def run_soundcode(
     ent_spans: list[list[float]] = []
     last_rb_key: tuple | None = None
     prev_n_lp = 0
+    # penalty bookkeeping: char span per committed token (maps char-offset
+    # rollback targets to trie token depths), cumulative across restarts.
+    tok_spans: list[tuple[int, int]] = []
+    prev_n_tok = 0
 
     try:
         if verifier == "lsp":
@@ -696,6 +724,18 @@ async def run_soundcode(
                         target = 0
                 except Exception:
                     target = code.ckpt[-1] if code.ckpt else 0
+            elif rollback == "penalty" and rocode_proc is not None:
+                # NaiveLast target + ROCODE decayed penalty on the
+                # abandoned suffix (applied engine-side on the retry).
+                target = code.ckpt[-1] if code.ckpt else 0
+                try:
+                    tok_pos = sum(1 for s in tok_spans if s[1] <= target)
+                    tok_pos = min(tok_pos, rocode_proc.trie.cursor.depth)
+                    rocode_proc.mark_error()
+                    rocode_proc.rollback_and_penalize(tok_pos)
+                    del tok_spans[tok_pos:]
+                except Exception:
+                    pass
             elif rollback == "entropy2":
                 # ROCODE's full rule (Eqs. 5-7): r_e (error-line offset) on
                 # first rollback for an error; r_h (start of the line
@@ -755,6 +795,12 @@ async def run_soundcode(
             prev_full = ""  # cumulative text vLLM has emitted this stream
 
             from vllm import SamplingParams
+            if rollback == "penalty" and rocode_proc is not None:
+                from soundcode.rocode_penalty_v1 import serialize_trie
+                _extra = {"rocode_trie":
+                          serialize_trie(rocode_proc.trie.cursor)}
+            else:
+                _extra = None
             params = SamplingParams(
                 temperature=0.0, top_p=1.0,
                 # Leave headroom for what we've already emitted; cap absolute.
@@ -763,8 +809,10 @@ async def run_soundcode(
                 # entropy2 needs per-token distributional entropy; top-20
                 # logprobs give the standard truncated approximation.
                 logprobs=20 if rollback == "entropy2" else None,
+                extra_args=_extra,
             )
-            prev_n_lp = 0  # cumulative-logprob cursor for this stream
+            prev_n_lp = 0   # cumulative-logprob cursor for this stream
+            prev_n_tok = 0  # cumulative-token cursor for this stream
 
             rollback_triggered = False
             sync_check_ok_continue = False  # sync-only: check passed, restart stream
@@ -772,7 +820,7 @@ async def run_soundcode(
             async def _consume():
                 nonlocal n_tokens, n_rollbacks, pending_check, prev_full
                 nonlocal rollback_triggered, sync_check_ok_continue
-                nonlocal cur_prompt, prev_n_lp
+                nonlocal cur_prompt, prev_n_lp, prev_n_tok
                 async for out in engine.generate(cur_prompt, params, req_id):
                     if time.perf_counter() - t0 >= timeout_s:
                         with contextlib.suppress(Exception):
@@ -803,6 +851,22 @@ async def run_soundcode(
                                 ent_spans.append(
                                     [span_start,
                                      span_start + len(new_text), h])
+                            if (rollback == "penalty"
+                                    and rocode_proc is not None):
+                                tids = out.outputs[0].token_ids or []
+                                new_ids = list(tids[prev_n_tok:])
+                                prev_n_tok = len(tids)
+                                if new_ids:
+                                    base = len(code.content)
+                                    per = len(new_text) / len(new_ids)
+                                    for k, tid in enumerate(new_ids):
+                                        s = base + int(k * per)
+                                        e = (base + len(new_text)
+                                             if k == len(new_ids) - 1
+                                             else base + int((k + 1) * per))
+                                        tok_spans.append((s, e))
+                                        rocode_proc.record_emitted_token(
+                                            int(tid))
                             code.append(new_text)
                             if code.body_closed:
                                 # Function body closed — natural end.
@@ -1168,7 +1232,9 @@ async def amain(args) -> None:
 
         print(f"\nBuilding vLLM engine ({args.model})...", flush=True)
         t0 = time.perf_counter()
-        engine = build_vllm_engine(args.model)
+        with_penalty = any(a.get("rollback") == "penalty"
+                           for a in arms_to_run)
+        engine = build_vllm_engine(args.model, with_penalty=with_penalty)
         print(f"  ready in {time.perf_counter()-t0:.1f}s", flush=True)
 
         # Warmup pass (not measured): amortizes cudagraph capture.
