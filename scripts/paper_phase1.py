@@ -439,8 +439,10 @@ def build_vllm_engine(model_name: str = MODEL_NAME,
     if reg.get("quantization") is not None:
         engine_kwargs["quantization"] = reg["quantization"]
     if with_penalty:
+        # vLLM's custom-logitsproc loader expects entrypoint syntax
+        # ("module.path:ClassName"), not a dotted attribute path.
         engine_kwargs["logits_processors"] = [
-            "soundcode.rocode_penalty_v1.RocodePenaltyV1"]
+            "soundcode.rocode_penalty_v1:RocodePenaltyV1"]
     args = AsyncEngineArgs(**engine_kwargs)
     return AsyncLLMEngine.from_engine_args(args)
 
