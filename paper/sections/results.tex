@@ -170,9 +170,10 @@ of these effects favors verification over plain decoding.
 Accordingly, this paper claims a \emph{latency} improvement only:
 the wall-time gaps in Table~\ref{tab:main} are large, consistent
 across mean, median, and p90 (p90: $1.97$\,s sync vs $1.14$\,s
-async on Rust; $3.72$\,s vs $1.72$\,s on C++), and hold on
-$78$--$99\%$ of individual paired problems; the pipeline's
-run-to-run stability is characterized in \S\ref{sec:repro}.
+async on Rust; $3.72$\,s vs $1.72$\,s on C++), hold on
+$78$--$99\%$ of individual paired problems, and replicate across
+three independent full-grid executions ($1.473 \pm 0.0004$ Rust,
+$2.156 \pm 0.016$ C++; \S\ref{sec:repro}).
 
 \subsection{Headline finding}\label{sec:headline}
 
@@ -523,7 +524,11 @@ wall-times within $3\%$, and five independent full-grid executions
 agreed to $\pm 0.03\%$ (Rust) and $\pm 0.2\%$ (C++) on the
 headline ratio with per-problem outcomes identical across all
 five runs --- including the async arms', which are race-dependent
-in principle. Raw records of every run, v1 and v2, are committed.
+in principle. The corrected (v2) runner shows the same stability
+across three independent full-grid executions: headline ratios
+$1.473 \pm 0.0004$ (Rust) and $2.156 \pm 0.016$ (C++), with every
+arm's per-problem compile and test outcomes identical across all
+three runs. Raw records of every run, v1 and v2, are committed.
 The analysis pipeline is deterministic: re-running it regenerates
 the aggregate CSV and report byte-identically and all figures
 content-identically.
