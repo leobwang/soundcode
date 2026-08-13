@@ -682,6 +682,13 @@ async def run_soundcode(
     # rollback targets to trie token depths), cumulative across restarts.
     tok_spans: list[tuple[int, int]] = []
     prev_n_tok = 0
+    # Highest boundary offset already checked/spawned. Without this gate,
+    # at_boundary() re-fires on the SAME trailing `;`/`}` whenever a newly
+    # appended chunk is pure whitespace (rstrip makes it invisible) — on
+    # deep-indent languages (Java) the sync arm thrashed at ~80 checks and
+    # aborts per problem. Reset downward on rollback (truncated offsets may
+    # hold new code needing fresh checks).
+    checked_boundary_floor = -1
 
     try:
         if verifier == "lsp":
@@ -710,7 +717,7 @@ async def run_soundcode(
 
         async def _do_rollback(result) -> None:
             """Apply rollback policy. Mutates `code` and `cur_prompt`."""
-            nonlocal cur_prompt, last_rb_key
+            nonlocal cur_prompt, last_rb_key, checked_boundary_floor
             if (rollback == "entropy" and rocode_decider is not None
                     and rocode_proc is not None):
                 try:
@@ -769,6 +776,7 @@ async def run_soundcode(
             else:
                 target = code.ckpt[-1] if code.ckpt else 0
             code.rollback(to_offset=target)
+            checked_boundary_floor = target - 1
             if rollback == "entropy2":
                 # Prune entropy spans past the rollback target.
                 kept = []
@@ -821,6 +829,7 @@ async def run_soundcode(
                 nonlocal n_tokens, n_rollbacks, pending_check, prev_full
                 nonlocal rollback_triggered, sync_check_ok_continue
                 nonlocal cur_prompt, prev_n_lp, prev_n_tok
+                nonlocal checked_boundary_floor
                 async for out in engine.generate(cur_prompt, params, req_id):
                     if time.perf_counter() - t0 >= timeout_s:
                         with contextlib.suppress(Exception):
@@ -873,10 +882,13 @@ async def run_soundcode(
                                 with contextlib.suppress(Exception):
                                     await engine.abort(req_id)
                                 return
-                            if code.at_boundary():
+                            b_off = len(code.content.rstrip()) - 1
+                            if (code.at_boundary()
+                                    and b_off > checked_boundary_floor):
                                 if scheduling == "sync":
                                     # Abort the stream, run check inline,
                                     # then return to let outer loop restart.
+                                    checked_boundary_floor = b_off
                                     with contextlib.suppress(Exception):
                                         await engine.abort(req_id)
                                     result = await code.check()
@@ -910,6 +922,7 @@ async def run_soundcode(
                                             await _do_rollback(done_res)
                                             return
                                     if pending_check is None:
+                                        checked_boundary_floor = b_off
                                         pending_check = asyncio.create_task(
                                             code.check()
                                         )
