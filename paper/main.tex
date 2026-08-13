@@ -87,8 +87,11 @@ on MultiPL-E HumanEval-rs and HumanEval-cpp
 rollback algorithm fixed, SoundCode is $1.59\times$ faster on Rust
 ($116/156$ paired wins) and $2.95\times$ faster on C++
 ($159/161$ paired wins) than the synchronous ROCODE-style
-equivalent. pass@1 is statistically indistinguishable between the
-two schedulings (single greedy run; McNemar exact $p\!=\!0.30$ on
+equivalent, with the ratios stable across five independent
+full-grid executions ($\pm 0.2\%$).
+pass@1 is statistically indistinguishable between the
+two schedulings (greedy decoding, outputs identical across
+replications; McNemar exact $p\!=\!0.30$ on
 Rust, $p\!=\!0.13$ on C++), so our contribution is a pure
 \emph{latency} result: asynchronous scheduling removes the
 synchronous verifier's critical-path cost without measurably

@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2026.1.16)  12 AUG 2026 19:42
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2026.1.16)  12 AUG 2026 22:13
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -659,7 +659,7 @@ Package microtype Info: Loading generic protrusion settings for font family
 (microtype)             For optimal results, create family-specific settings.
 (microtype)             See the microtype manual for details.
 
-Underfull \hbox (badness 1389) in paragraph at lines 59--101
+Underfull \hbox (badness 1389) in paragraph at lines 59--104
 []\T1/ptm/m/n/10 (+20) Verifier-guided code-generation sys-tems --- Monitor-Gui
 ded De-cod-ing [[]],
  []
@@ -675,10 +675,7 @@ LaTeX Font Info:    Trying to load font information for TS1+ptm on input line 8
 
 (/usr/share/texlive/texmf-dist/tex/latex/psnfss/ts1ptm.fd
 File: ts1ptm.fd 2001/06/04 font definitions for TS1/ptm.
-)
-Underfull \vbox (badness 4954) has occurred while \output is active []
-
- [2])
+) [2])
 (./sections/related_work.tex [3]
 <figures/mgd_workflow.pdf, id=194, 359.76608pt x 131.16302pt>
 File: figures/mgd_workflow.pdf Graphic file (type pdf)
@@ -743,28 +740,28 @@ Package pdftex.def Info: figures/plot_walltime_bars.pdf  used on input line 120
 .
 (pdftex.def)             Requested size: 337.86465pt x 193.68707pt.
  [12]
-<figures/plot_speedup_scatter.pdf, id=635, 255.16548pt x 208.44826pt>
+<figures/plot_speedup_scatter.pdf, id=636, 255.16548pt x 208.44826pt>
 File: figures/plot_speedup_scatter.pdf Graphic file (type pdf)
 <use figures/plot_speedup_scatter.pdf>
 Package pdftex.def Info: figures/plot_speedup_scatter.pdf  used on input line 1
-95.
+97.
 (pdftex.def)             Requested size: 238.49341pt x 194.8345pt.
  [13 <./figures/plot_walltime_bars.pdf>]
-<figures/plot_rollback_dist.pdf, id=698, 354.26488pt x 251.58542pt>
+<figures/plot_rollback_dist.pdf, id=699, 354.26488pt x 251.58542pt>
 File: figures/plot_rollback_dist.pdf Graphic file (type pdf)
 <use figures/plot_rollback_dist.pdf>
-Package pdftex.def Info: figures/plot_rollback_dist.pdf  used on input line 256
+Package pdftex.def Info: figures/plot_rollback_dist.pdf  used on input line 258
 .
 (pdftex.def)             Requested size: 337.86465pt x 239.9453pt.
 
 Underfull \vbox (badness 5504) has occurred while \output is active []
 
  [14 <./figures/plot_speedup_scatter.pdf>]
-<figures/plot_overhead_share.pdf, id=750, 289.22366pt x 185.27356pt>
+<figures/plot_overhead_share.pdf, id=751, 289.22366pt x 185.27356pt>
 File: figures/plot_overhead_share.pdf Graphic file (type pdf)
 <use figures/plot_overhead_share.pdf>
 Package pdftex.def Info: figures/plot_overhead_share.pdf  used on input line 32
-0.
+2.
 (pdftex.def)             Requested size: 337.86465pt x 216.43274pt.
  [15 <./figures/plot_rollback_dist.pdf>])
 (./sections/conclusion.tex [16 <./figures/plot_overhead_share.pdf>])
@@ -777,11 +774,11 @@ Package rerunfilecheck Info: File `main.out' has not changed.
 (rerunfilecheck)             Checksum: 22E2ECFDE081FCFC7A20EDB116D56EAA;4451.
  ) 
 Here is how much of TeX's memory you used:
- 17110 strings out of 474222
- 264126 string characters out of 5748733
+ 17108 strings out of 474222
+ 264107 string characters out of 5748733
  1945975 words of memory out of 5000000
  38483 multiletter control sequences out of 15000+600000
- 651943 words of font info for 400 fonts, out of 8000000 for 9000
+ 651718 words of font info for 398 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
  75i,19n,79p,1001b,642s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></us
@@ -809,10 +806,10 @@ onts/type1/urw/helvetic/uhvr8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/u
 rw/times/utmb8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmbi8
 a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmr8a.pfb></usr/sha
 re/texlive/texmf-dist/fonts/type1/urw/times/utmri8a.pfb>
-Output written on main.pdf (19 pages, 549223 bytes).
+Output written on main.pdf (19 pages, 550353 bytes).
 PDF statistics:
- 1025 PDF objects out of 1200 (max. 8388607)
- 745 compressed objects within 8 object streams
- 148 named destinations out of 1000 (max. 500000)
+ 1027 PDF objects out of 1200 (max. 8388607)
+ 747 compressed objects within 8 object streams
+ 149 named destinations out of 1000 (max. 500000)
  81150 words of extra memory for PDF output out of 89155 (max. 10000000)
 

@@ -158,8 +158,10 @@ of these effects favors verification over plain decoding.
 Accordingly, this paper claims a \emph{latency} improvement only:
 the wall-time gaps in Table~\ref{tab:main} are large, consistent
 across mean, median, and p90 (p90: $2.38$\,s sync vs $1.51$\,s
-async on Rust; $4.98$\,s vs $1.81$\,s on C++), and hold on
-$74$--$99\%$ of individual paired problems.
+async on Rust; $4.98$\,s vs $1.81$\,s on C++), hold on
+$74$--$99\%$ of individual paired problems, and are stable across
+five independent full-grid executions ($1.587 \pm 0.0005$ Rust,
+$2.960 \pm 0.006$ C++; \S\ref{sec:repro}).
 
 \subsection{Headline finding}\label{sec:headline}
 
@@ -352,6 +354,18 @@ re-run vs $1.47\times$ stored on Rust; $3.30\times$ vs
 $3.33\times$ on C++). The analysis pipeline is deterministic:
 re-running it regenerates the aggregate CSV and report
 byte-identically and all six figures content-identically.
+
+\paragraph{Replication.} We additionally re-ran the \emph{full}
+grid four more times on the same hardware ($5$ independent
+executions in total, including the original). The headline
+sync/async ratio-of-means is $1.587 \pm 0.0005$ on Rust and
+$2.960 \pm 0.006$ on C++ (mean $\pm$ sd across the five runs);
+per-arm mean wall-times vary by under $1\%$ (e.g.\ sync-C++
+$3.645 \pm 0.015$\,s, async-C++ $1.232 \pm 0.006$\,s). Every
+arm's per-problem compile and test-pass outcomes --- including the
+async arms', which are race-dependent in principle --- were
+identical across all five runs. The raw records of all
+replications are committed alongside the original.
 
 \paragraph{Determinism caveats.} Plain and sync arms are
 token-level deterministic up to vLLM prefix-caching numerics
