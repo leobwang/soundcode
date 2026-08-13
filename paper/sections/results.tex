@@ -340,7 +340,19 @@ five measured points, ordered exactly as per-check-cost relative
 to decode time predicts --- and capped by the saturation regime
 above.
 
-\paragraph{Matched-budget resampling baseline.} The bar any
+\paragraph{A second benchmark: MBPP.} HumanEval's $n$ leaves
+$\pm$$7$\,pp confidence intervals on pass@1; MultiPL-E's MBPP
+translations give $2.3\times$ the sample ($n\!=\!354$ Rust,
+$n\!=\!397$ C++). Both headline findings survive the added power.
+The latency result: sync/async ratio-of-means $1.54\times$ on
+Rust (async faster on $273/354$ paired problems) and $2.18\times$
+on C++ ($394/397$), at means $0.91$\,s\,$\to$\,$0.59$\,s and
+$2.25$\,s\,$\to$\,$1.03$\,s. The accuracy null sharpens rather
+than weakens: sync-vs-async pass@1 is non-significant on both
+languages ($15$~vs~$10$ discordant, $p\!=\!0.42$ Rust; $11$~vs~$5$,
+$p\!=\!0.21$ C++), and async-vs-\textsf{Vanilla} on C++ has
+\emph{zero} discordant problems out of $397$ --- the verified arm
+passes exactly the problems vanilla decoding passes. The bar any
 in-loop verification system must clear
 \citep{olausson2024selfrepair} is post-hoc filtering under the
 same budget. Our baseline samples complete candidates at
