@@ -155,7 +155,10 @@ wall-clock penalty at statistically unchanged accuracy.
   latency. The Rust-vs-C++ asymmetry in our results --- a smaller
   win on Rust, whose verifier amortizes cheaper in-loop
   ($\sim$$0.18$\,s/call vs C++'s $\sim$$0.6$\,s/call) --- is the
-  first empirical confirmation of this prediction.
+  first empirical confirmation of this prediction, and a
+  follow-up model-size scaling test confirms it from the other
+  direction: a $3.5\times$-faster-decoding 1.5B model widens the
+  win to $1.69\times$/$3.17\times$ (\S\ref{sec:extended}).
 \item \textbf{A reproducible open-source implementation and live
   demo.} The producer is vLLM's \code{AsyncLLMEngine}
   \citep{vllm2023} run with \code{enforce\_eager=False}; the

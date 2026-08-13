@@ -323,6 +323,23 @@ per-check cost exceeds per-token cost'' holds; the win is largest
 when per-check cost is also \emph{small relative to total decode
 time}.
 
+\paragraph{Model-size scaling.} The cost-spectrum framing
+(\S\ref{sec:when-async}) makes a falsifiable prediction: the async
+win grows with the ratio of per-check verifier cost to decode
+cost, so a smaller, faster-decoding model should show a
+\emph{larger} win at the same verifier. We re-ran the four core
+arms with Qwen2.5-Coder-1.5B-Instruct (vanilla decode:
+$0.20$\,s/problem Rust, $0.23$\,s C++ --- $3.5\times$ faster than
+the 7B). The prediction holds on both languages: the sync/async
+ratio rises from $1.59\times$ to $1.69\times$ on Rust (async
+faster on $126/156$ paired problems) and from $2.95\times$ to
+$3.17\times$ on C++ ($159/161$), with pass@1 again statistically
+indistinguishable between schedulings (McNemar $p\!=\!0.27$ Rust,
+$p\!=\!1.0$ C++). Together with the LSP arm, the spectrum now has
+five measured points, ordered exactly as per-check-cost relative
+to decode time predicts --- and capped by the saturation regime
+above.
+
 \paragraph{Matched-budget resampling baseline.} The bar any
 in-loop verification system must clear
 \citep{olausson2024selfrepair} is post-hoc filtering under the
