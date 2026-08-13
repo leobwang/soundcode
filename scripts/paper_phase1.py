@@ -28,6 +28,7 @@ import argparse
 import asyncio
 import contextlib
 import json
+import math
 import os
 import shutil
 import statistics
@@ -78,6 +79,25 @@ ARMS: list[dict[str, Any]] = [
     {"id": "async_entropy_cpp",   "lang": "cpp",  "mode": "soundcode",
      "scheduling": "async", "rollback": "entropy"},
     {"id": "rocode_upstream_cpp", "lang": "cpp",  "mode": "rocode_upstream"},
+]
+
+# Post-deadline arms — NOT part of the default grid (so replication runs of
+# the paper grid are unaffected). Selectable only via --arms.
+#   entropy2: ROCODE's FULL entropy rule, properly wired — real per-token
+#             Shannon entropies from vLLM logprobs, error-line offset r_e on
+#             first rollback, max-entropy line r_h on recurrence (same error
+#             code at same line as the previous rollback).
+#   lsp:      rust-analyzer (via soundcode.ra_check) as the in-loop verifier
+#             instead of cargo check; NaiveLast rollback.
+EXTRA_ARMS: list[dict[str, Any]] = [
+    {"id": "async_entropy2_rust", "lang": "rust", "mode": "soundcode",
+     "scheduling": "async", "rollback": "entropy2"},
+    {"id": "async_entropy2_cpp",  "lang": "cpp",  "mode": "soundcode",
+     "scheduling": "async", "rollback": "entropy2"},
+    {"id": "async_lsp_rust",      "lang": "rust", "mode": "soundcode",
+     "scheduling": "async", "rollback": "naive", "verifier": "lsp"},
+    {"id": "sync_lsp_rust",       "lang": "rust", "mode": "soundcode",
+     "scheduling": "sync",  "rollback": "naive", "verifier": "lsp"},
 ]
 
 
@@ -268,6 +288,17 @@ def build_vllm_engine(model_name: str = MODEL_NAME):
     return AsyncLLMEngine.from_engine_args(args)
 
 
+def make_lsp_checker(workspace: Path):
+    """rust-analyzer via multilspy — the AsyncLSP/SyncLSP verifier.
+
+    Same interface as CargoChecker (async check(source) -> list[Diagnostic],
+    plus start()/stop()). Uses the shipped driver defaults, including its
+    fixed 2.0s publish-settle wait per check; see soundcode/ra_check.py.
+    """
+    from soundcode.ra_check import RustAnalyzerChecker
+    return RustAnalyzerChecker(workspace=workspace)
+
+
 # ─── result dataclass ──────────────────────────────────────────────────────
 
 
@@ -354,6 +385,7 @@ async def run_soundcode(
     engine, prob: Problem, adapter: LangAdapter,
     *, scheduling: str, rollback: str,
     timeout_s: float, max_tokens: int,
+    verifier: str = "cargo",
 ) -> RunResult:
     """SoundCode arm — checker-supervised decoding with rollback.
 
@@ -390,11 +422,28 @@ async def run_soundcode(
     timed_out = False
     err: str | None = None
 
+    # entropy2 bookkeeping: per-token entropy spans in content coordinates
+    # ([start_char, end_char, mean_H]), and the (code, line) key of the
+    # previous rollback's first blocking diagnostic (recurrence detection).
+    ent_spans: list[list[float]] = []
+    last_rb_key: tuple | None = None
+    prev_n_lp = 0
+
     try:
-        checker = adapter.make_checker(workspace)
-        if hasattr(checker, "start"):
-            with contextlib.suppress(Exception):
-                checker.start()
+        if verifier == "lsp":
+            checker = make_lsp_checker(workspace)
+            # A failed LSP start must surface as an arm error, not silently
+            # degrade the arm to plain decoding (check() would return []).
+            checker.start()
+            # Exclude per-problem rust-analyzer startup from measured wall —
+            # the cargo arms pay no analogous per-problem server cost, and
+            # the vLLM engine build is likewise excluded globally.
+            t0 = time.perf_counter()
+        else:
+            checker = adapter.make_checker(workspace)
+            if hasattr(checker, "start"):
+                with contextlib.suppress(Exception):
+                    checker.start()
 
         code = Code(
             prefix=prob.prompt, suffix="}",
@@ -407,7 +456,7 @@ async def run_soundcode(
 
         async def _do_rollback(result) -> None:
             """Apply rollback policy. Mutates `code` and `cur_prompt`."""
-            nonlocal cur_prompt
+            nonlocal cur_prompt, last_rb_key
             if (rollback == "entropy" and rocode_decider is not None
                     and rocode_proc is not None):
                 try:
@@ -421,9 +470,47 @@ async def run_soundcode(
                         target = 0
                 except Exception:
                     target = code.ckpt[-1] if code.ckpt else 0
+            elif rollback == "entropy2":
+                # ROCODE's full rule (Eqs. 5-7): r_e (error-line offset) on
+                # first rollback for an error; r_h (start of the line
+                # containing the max-entropy token) when the same error code
+                # recurs at the same line as the previous rollback.
+                target = None
+                blocking = [d for d in result.diagnostics
+                            if d.is_blocking and d.line is not None]
+                key = None
+                r_e = None
+                if blocking:
+                    d0 = blocking[0]
+                    key = (d0.code, d0.line)
+                    # Map 1-based line in the checked file (prompt + content
+                    # + closer) to a char offset in content coordinates.
+                    checked = prob.prompt + code.content
+                    lines = checked.split("\n")
+                    if 1 <= d0.line <= len(lines):
+                        off = sum(len(l) + 1 for l in lines[: d0.line - 1])
+                        r_e = max(0, min(off - len(prob.prompt),
+                                         len(code.content)))
+                recurrence = key is not None and key == last_rb_key
+                last_rb_key = key
+                if recurrence and ent_spans:
+                    smax = max(ent_spans, key=lambda s: s[2])
+                    target = code.content.rfind("\n", 0, int(smax[0])) + 1
+                elif r_e is not None and r_e < len(code.content):
+                    target = r_e
+                if target is None or target >= len(code.content):
+                    target = code.ckpt[-1] if code.ckpt else 0
             else:
                 target = code.ckpt[-1] if code.ckpt else 0
             code.rollback(to_offset=target)
+            if rollback == "entropy2":
+                # Prune entropy spans past the rollback target.
+                kept = []
+                for s in ent_spans:
+                    if s[0] >= target:
+                        continue
+                    kept.append([s[0], min(s[1], float(target)), s[2]])
+                ent_spans[:] = kept
             cur_prompt = prob.prompt + code.content_up_to(target)
 
         attempt = 0
@@ -447,7 +534,11 @@ async def run_soundcode(
                 # Leave headroom for what we've already emitted; cap absolute.
                 max_tokens=max(64, max_tokens),
                 stop=adapter.stop_strings or None,
+                # entropy2 needs per-token distributional entropy; top-20
+                # logprobs give the standard truncated approximation.
+                logprobs=20 if rollback == "entropy2" else None,
             )
+            prev_n_lp = 0  # cumulative-logprob cursor for this stream
 
             rollback_triggered = False
             sync_check_ok_continue = False  # sync-only: check passed, restart stream
@@ -455,7 +546,7 @@ async def run_soundcode(
             async def _consume():
                 nonlocal n_tokens, n_rollbacks, pending_check, prev_full
                 nonlocal rollback_triggered, sync_check_ok_continue
-                nonlocal cur_prompt
+                nonlocal cur_prompt, prev_n_lp
                 async for out in engine.generate(cur_prompt, params, req_id):
                     if time.perf_counter() - t0 >= timeout_s:
                         with contextlib.suppress(Exception):
@@ -468,6 +559,24 @@ async def run_soundcode(
                         if len(full) > len(prev_full):
                             new_text = full[len(prev_full):]
                             prev_full = full
+                            if rollback == "entropy2":
+                                # Record this delta's char span with the mean
+                                # Shannon entropy of its newly arrived tokens
+                                # (streaming yields ~1 token per chunk).
+                                span_start = float(len(code.content))
+                                lps = out.outputs[0].logprobs or []
+                                new_lps = lps[prev_n_lp:]
+                                prev_n_lp = len(lps)
+                                hs = []
+                                for tok_lp in new_lps:
+                                    if tok_lp:
+                                        hs.append(-sum(
+                                            math.exp(l.logprob) * l.logprob
+                                            for l in tok_lp.values()))
+                                h = sum(hs) / len(hs) if hs else 0.0
+                                ent_spans.append(
+                                    [span_start,
+                                     span_start + len(new_text), h])
                             code.append(new_text)
                             if code.body_closed:
                                 # Function body closed — natural end.
@@ -640,6 +749,7 @@ async def run_arm(
                         scheduling=arm["scheduling"],
                         rollback=arm["rollback"],
                         timeout_s=timeout_s, max_tokens=max_tokens,
+                        verifier=arm.get("verifier", "cargo"),
                     )
                 else:
                     raise ValueError(f"unknown mode: {mode}")
@@ -782,7 +892,7 @@ async def amain(args) -> None:
     arms = ARMS
     if args.arms:
         wanted = set(args.arms.split(","))
-        arms = [a for a in ARMS if a["id"] in wanted]
+        arms = [a for a in ARMS + EXTRA_ARMS if a["id"] in wanted]
         if not arms:
             print(f"No arms match --arms={args.arms}", file=sys.stderr)
             sys.exit(1)

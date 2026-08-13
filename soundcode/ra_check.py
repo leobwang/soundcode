@@ -20,7 +20,10 @@ from soundcode.code import Category, Diagnostic
 class RustAnalyzerChecker:
     workspace: Path
     file_in_workspace: str = "src/main.rs"
-    settle_s: float = 2.0
+    # Max wait for the publish stream to settle. Fresh analysis after a
+    # reopen typically lands in ~2-3s; the quiet-grace heuristic in
+    # _cycle_and_wait usually returns well before this deadline.
+    settle_s: float = 6.0
     _lock: asyncio.Lock | None = None
 
     def __post_init__(self) -> None:
@@ -37,7 +40,10 @@ class RustAnalyzerChecker:
         self._lsp_ctx = None
         self._ready = threading.Event()
         self._stop = threading.Event()
-        self._captured: dict[str, list[dict]] = {}
+        # uri -> (published document version | None, diagnostics)
+        self._captured: dict[str, tuple[int | None, list[dict]]] = {}
+        self._version = 0
+        self._last_text = ""  # overlay content as of the last didChange
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -59,19 +65,37 @@ class RustAnalyzerChecker:
             self._lsp = LanguageServer.create(self._config, self._logger, str(self.workspace))
             self._lsp_ctx = self._lsp.start_server()
             await self._lsp_ctx.__aenter__()
-            # Intercept publishDiagnostics (multilspy installs a no-op handler).
+            # Intercept publishDiagnostics (multilspy installs a no-op
+            # handler). Record the published document VERSION alongside the
+            # diagnostics so check() can correlate a publish with the
+            # didChange that triggered it — without this, a check can read
+            # the re-published diagnostics of the PREVIOUS content (stale
+            # off-by-one; rust-analyzer re-sends known diagnostics eagerly).
             self._lsp.server.on_notification(
                 "textDocument/publishDiagnostics",
                 lambda params: self._captured.__setitem__(
-                    params["uri"], params.get("diagnostics", [])
+                    params["uri"],
+                    (params.get("version"), params.get("diagnostics", [])),
                 ),
             )
+            # Open the document ONCE and keep it open for the checker's
+            # lifetime. Content updates flow through multilspy's own
+            # incremental-edit API (delete + insert), the only sync path
+            # this rust-analyzer/multilspy combination reliably applies —
+            # hand-rolled didOpen/didChange/didChangeWatchedFiles overlays
+            # are silently ignored by the server (see git history).
+            self._open_cm = self._lsp.open_file(self.file_in_workspace)
+            self._open_cm.__enter__()
             self._ready.set()
 
         loop.run_until_complete(_start())
         try:
             loop.run_until_complete(self._wait_until_stop())
         finally:
+            try:
+                self._open_cm.__exit__(None, None, None)
+            except Exception:
+                pass
             try:
                 loop.run_until_complete(self._lsp_ctx.__aexit__(None, None, None))
             except Exception:
@@ -88,33 +112,78 @@ class RustAnalyzerChecker:
             self._thread.join(timeout=5.0)
 
     async def check(self, source: str) -> list[Diagnostic]:
-        """Write `source` to src/main.rs, wait for rust-analyzer to publish."""
+        """Replace the open document's content with `source` via multilspy's
+        incremental-edit API, then await the version-matched publish."""
         if self._lsp is None:
             return []
         assert self._lock is not None
         async with self._lock:
             target = self.workspace / self.file_in_workspace
-            target.write_text(source)
+            target.write_text(source)  # keep disk in sync (post-hoc tools)
             uri = target.as_uri()
-            self._captured.pop(uri, None)
 
-            # Touch the file via open_file/close cycle so rust-analyzer re-analyzes.
             fut = asyncio.run_coroutine_threadsafe(
-                self._touch_and_wait(uri), self._loop,
+                self._edit_and_wait(uri, source), self._loop,
             )
             try:
-                diags = fut.result(timeout=self.settle_s + 2.0)
+                diags = await asyncio.wrap_future(fut)
             except Exception:
                 diags = []
 
         return _convert(diags)
 
-    async def _touch_and_wait(self, uri: str) -> list[dict]:
+    async def _edit_and_wait(self, uri: str, text: str) -> list[dict]:
+        """Delete the whole buffer, insert `text` (both via multilspy's own
+        versioned incremental didChange path — the only sync mechanism this
+        server/client combination reliably applies), then wait up to
+        `settle_s` for a publishDiagnostics whose version reaches the
+        buffer's post-edit version. Falls back to the newest publish at the
+        deadline if the server omits versions."""
         try:
-            with self._lsp.open_file("src/main.rs"):
-                # Wait for analysis.
-                await asyncio.sleep(self.settle_s)
-                return self._captured.get(uri, [])
+            buf = self._lsp.open_file_buffers.get(uri)
+            if buf is None:
+                return []
+            old = buf.contents
+            if old:
+                old_lines = old.split("\n")
+                self._lsp.delete_text_between_positions(
+                    self.file_in_workspace,
+                    {"line": 0, "character": 0},
+                    {"line": len(old_lines) - 1,
+                     "character": len(old_lines[-1])},
+                )
+            self._lsp.insert_text_at_position(
+                self.file_in_workspace, 0, 0, text)
+            v = buf.version
+            # didSave triggers rust-analyzer's flycheck (embedded cargo
+            # check) — without it, rustc-class diagnostics (E0308 etc.) are
+            # computed once at startup and never refresh, which was the
+            # historic staleness of this driver. Disk was synced by check().
+            self._lsp.server.notify.did_save_text_document({
+                "textDocument": {"uri": uri},
+                "text": text,
+            })
+            # After a save, r-a publishes a transient version-matched set
+            # (native quick pass) followed by the flycheck-merged set a
+            # moment later. Take the newest version-matched publish once
+            # the stream has been quiet for 0.4s (or at the deadline).
+            loop = asyncio.get_event_loop()
+            deadline = loop.time() + self.settle_s
+            matched: tuple[int | None, list[dict]] | None = None
+            matched_at: float | None = None
+            while loop.time() < deadline:
+                got = self._captured.get(uri)
+                if (got is not None and got[0] is not None
+                        and got[0] >= v and got is not matched):
+                    matched = got
+                    matched_at = loop.time()
+                if matched_at is not None and loop.time() - matched_at > 0.4:
+                    break
+                await asyncio.sleep(0.05)
+            if matched is not None:
+                return matched[1]
+            got = self._captured.get(uri)
+            return got[1] if got is not None else []
         except Exception:
             return []
 
