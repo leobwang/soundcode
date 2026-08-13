@@ -22,8 +22,8 @@ summarizes the implementation.
     boundary an async verifier task is spawned on a snapshot of the
     current buffer; a consumer drains finished verifier tasks in
     FIFO order; on the first blocking diagnostic, pending tasks are
-    cancelled and the buffer is rolled back to the last
-    verifier-confirmed checkpoint.}
+    cancelled and the buffer is rolled back to the most recent
+    boundary checkpoint.}
   \label{fig:arch}
 \end{figure}
 
@@ -47,7 +47,8 @@ Four components change relative to the synchronous baseline:
   right.
 \item A \textbf{rollback driver} that, on the first
   \textsc{Blocking} diagnostic, cancels pending tasks, truncates the
-  buffer to the last \textsc{NonBlocking}-confirmed checkpoint, and
+  buffer to the most recent boundary checkpoint (backing off to
+  earlier checkpoints on successive retries), and
   re-prompts the LM from that prefix.
 \end{enumerate}
 
@@ -71,16 +72,18 @@ buffer as a fresh \code{generate()} call.
     producer. The consumer (blue) drains finished verifier tasks
     in FIFO order. On the first \textsc{Blocking} diagnostic,
     pending tasks are cancelled and the buffer is rolled back to
-    the last verifier-confirmed checkpoint.}
+    the most recent boundary checkpoint.}
   \label{fig:soundcode-workflow}
 \end{figure}
 
-A key correctness invariant is that the buffer never grows
-\emph{past} a token whose own structural boundary has not yet been
-verified: when the LM emits the EOS token, the consumer awaits any
-in-flight tasks before returning, and a final-trailing-error still
-triggers rollback. This guarantees that the returned buffer is
-verifier-confirmed at every checkpoint, including the last one.
+At end of stream, the consumer awaits any in-flight verifier tasks
+before returning, and a trailing blocking verdict still triggers
+rollback and regeneration. Note that checkpoints are recorded
+eagerly at boundary time (\S\ref{sec:where-rollback}), so
+mid-stream checkpoints are \emph{candidate} rollback targets rather
+than verifier-cleared positions; final well-formedness is
+established by the end-of-stream drain plus the post-hoc
+compile-and-test evaluation.
 
 \subsection{Algorithm}\label{sec:algo}
 
@@ -98,7 +101,7 @@ rather than blocking on the just-scheduled one.
   detector $\mathcal{B}$; rollback policy $\pi$}
 \KwOut{verified completion $y$}
 \textbf{queue} $Q \gets \emptyset$\;
-\textbf{checkpoints} $C \gets \{0\}$ \tcp*{token indices known to verify}
+\textbf{checkpoints} $C \gets \{0\}$ \tcp*{boundary token indices (eager)}
 buffer $y \gets$ empty\;
 \textbf{spawn} producer:
   \While{not EOS \textbf{and} not aborted}{
@@ -106,6 +109,7 @@ buffer $y \gets$ empty\;
     $y \gets y \cdot t$\;
     \If(\tcp*[f]{e.g.\ depth-0 \code{;} or \code{\}}}\label{algline:spawn}){
         $\mathcal{B}(y)$}{
+      $C \gets C \cup \{|y|\}$ \tcp*{checkpoint recorded at boundary}
       $Q.\textsc{push}(\textsc{spawn-async}~\mathcal{V}(y),
         \text{idx}=|y|)$\;
     }
@@ -118,11 +122,12 @@ buffer $y \gets$ empty\;
         cancel pending tasks; $Q \gets \emptyset$\;
         $\mathcal{M}.\textsc{abort}$\;
         $r \gets \pi(y, d, C)$ \tcp*{rollback target (\S\ref{sec:where-rollback})}
-        $y \gets y[:r]$\;
+        $y \gets y[:r]$;\quad
+        $C \gets \{c \in C : c < r\}$ \tcp*{pop used checkpoint}
         \textbf{restart} producer with prompt $x \cdot y$\;
       }
       \uElseIf{$d$ is \textsc{NonBlocking}}{
-        $C \gets C \cup \{h.\text{idx}\}$ \tcp*{advance ratchet}
+        \tcp{no state change --- checkpoint was recorded at boundary}
       }
     }
     \textsc{yield} \tcp*{cooperative; back to producer}
@@ -132,9 +137,11 @@ buffer $y \gets$ empty\;
 
 The algorithm is parameterized by the rollback policy $\pi$, which
 maps a (buffer, diagnostic, checkpoint set) triple to a token
-offset. Three concrete instantiations are defined in
+offset. The concrete instantiations are defined in
 Section~\ref{sec:where-rollback}: \textsc{NaiveLast} (return
-$\max C$), \textsc{ROCODEEntropy} (try error-line offset, fall back
+$\max C$), \textsc{RecBackoff} (\textsc{NaiveLast}, but back off one
+additional checkpoint when the same error recurs at the same line),
+\textsc{ROCODEEntropy} (try error-line offset, fall back
 to max-entropy on recurrence), and \textsc{NaiveLast+Penalty} (return
 $\max C$ and add ROCODE's
 $\lambda^{t-r}$ token penalty to the retry).
@@ -266,22 +273,30 @@ line. IterGen \citep{ugare2025itergen} parameterizes the target by
 grammar non-terminal name.
 
 We unify all four under a \emph{rollback policy} $\pi$ that maps
-(buffer, diagnostic, checkpoint set) to a token offset. Three
+(buffer, diagnostic, checkpoint set) to a token offset. Four
 instantiations are defined below; two of them (\textsc{NaiveLast}
-and \textsc{ROCODEEntropy}) are evaluated empirically, while
-\textsc{NaiveLast+Penalty} is specified for completeness but not
+and \textsc{RecBackoff}) are evaluated empirically, while
+\textsc{ROCODEEntropy} as published and \textsc{NaiveLast+Penalty}
+are specified for completeness but not
 evaluated in this paper (\S\ref{sec:setup}). The punchline of the
 ablation (Section~\ref{sec:results-ablation-policy}) is that
 naive last-checkpoint is the right default on this benchmark:
-ROCODE's max-entropy fallback ties it on C++ and trails it on
+the recurrence-gated back-off ties it on C++ and trails it on
 Rust.
 
 \paragraph{\textsc{NaiveLast} (default, and the empirical winner).}
-Return $\max C$, the largest token index that has been
-verifier-confirmed. The \emph{ratchet} invariant: the buffer never
-regresses past a token that the verifier has cleared. This is the
-simplest sound policy and the one we recommend on HumanEval-class
-benchmarks. The intuition is that with a strong code LM, most
+Return $\max C$, the most recent boundary checkpoint. As
+implemented, checkpoints are recorded \emph{eagerly} when a
+boundary fires, not when that boundary's verifier verdict lands:
+the first rollback for an error therefore lands at the boundary at
+which the offending statement was flagged, and each successive
+failed retry pops one checkpoint, backing off one boundary at a
+time. (A stricter variant --- advancing checkpoints only on
+\textsc{NonBlocking} verdicts, so rollback targets are always
+verifier-cleared --- is a natural alternative we did not evaluate;
+both schedulings share the eager driver, so the sync-async
+comparison is unaffected.) This is the simplest policy and the one
+we recommend on HumanEval-class benchmarks. The intuition is that with a strong code LM, most
 problems never trigger a rollback at all ($132/156$ Rust and
 $155/161$ C++ problems under AsyncCargo-Naive;
 Section~\ref{sec:results-ablation-policy}), and on the firing
@@ -289,16 +304,27 @@ minority rollback recurs to the budget cap under either
 target-selection policy, so the simpler target performs no worse
 than a smarter one.
 
-\paragraph{\textsc{ROCODEEntropy}.} Reproduce ROCODE's two-rule
-formulation. First call: return the diagnostic's error-line offset
+\paragraph{\textsc{RecBackoff} (evaluated).} \textsc{NaiveLast}
+augmented with ROCODE's recurrence \emph{test}: when the verifier
+reports the same error code at the same source line as the previous
+rollback, back off one \emph{additional} checkpoint (roll back to
+the second-most-recent boundary rather than the most recent).
+This is the policy evaluated against \textsc{NaiveLast} in
+Section~\ref{sec:results-ablation-policy}; it hurt or tied
+\textsc{NaiveLast} on this benchmark.
+
+\paragraph{\textsc{ROCODEEntropy} (specified, not evaluated).}
+ROCODE's full two-rule formulation. First call: return the
+diagnostic's error-line offset
 $r_e$. Second call with the same error at the same line: return
 $r_h$, the line containing $\arg\max_t H_t$, where $H_t$ is the
 Shannon entropy of $\mathcal{M}$'s distribution at position $t$
-\citep[Eq.~5]{jiang2024rocode}. Empirically, the entropy fallback
-hurt or tied \textsc{NaiveLast} on this benchmark
-(Section~\ref{sec:results-ablation-policy}); we suspect it will
-matter more on benchmarks with longer functions or more
-multi-rollback problems.
+\citep[Eq.~5]{jiang2024rocode}. We state plainly: our
+implementation instantiates ROCODE's recurrence detector but does
+not feed the token-level entropy stream from the sampler into the
+target selection, so the full rule was not evaluated in this
+paper's experiments --- \textsc{RecBackoff} above is the portion
+that ran.
 
 \paragraph{\textsc{NaiveLast+Penalty}.} \textsc{NaiveLast} for
 target selection, plus ROCODE's $\lambda^{t-r}$ token penalty

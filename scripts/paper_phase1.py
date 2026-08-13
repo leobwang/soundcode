@@ -49,6 +49,11 @@ SENTINEL_PATH = RESULTS_DIR / "DONE"
 
 MODEL_NAME = "qwen2.5-coder-7b"  # registry key (see soundcode/vllm_model_registry.py)
 
+# Pinned nuprl/MultiPL-E revision — the revision the paper's data was
+# generated from (HF cache refs/main at run time). Unpinned loads track
+# upstream main and may drift.
+MULTIPLE_REVISION = "28441b6024e71d4a1c1c0f6bf171c935cd5a43f2"
+
 DEFAULT_PROBLEM_TIMEOUT_S = 60.0
 DEFAULT_MAX_TOKENS = 512
 MAX_ROLLBACKS_PER_PROBLEM = 6
@@ -210,15 +215,16 @@ class Problem:
     language: str
 
 
-def load_humaneval(lang: str) -> list[Problem]:
+def load_humaneval(lang: str, family: str = "humaneval") -> list[Problem]:
     from datasets import load_dataset
-    if lang == "rust":
-        ds_name = "humaneval-rs"
-    elif lang == "cpp":
-        ds_name = "humaneval-cpp"
-    else:
+    suffix = {"rust": "rs", "cpp": "cpp"}.get(lang)
+    if suffix is None:
         raise ValueError(lang)
-    ds = load_dataset("nuprl/MultiPL-E", ds_name, split="test")
+    if family not in ("humaneval", "mbpp"):
+        raise ValueError(family)
+    ds_name = f"{family}-{suffix}"
+    ds = load_dataset("nuprl/MultiPL-E", ds_name, split="test",
+                      revision=MULTIPLE_REVISION)
     out: list[Problem] = []
     for row in ds:
         out.append(Problem(
@@ -234,15 +240,15 @@ def load_humaneval(lang: str) -> list[Problem]:
 # ─── vLLM engine ───────────────────────────────────────────────────────────
 
 
-def build_vllm_engine():
+def build_vllm_engine(model_name: str = MODEL_NAME):
     """Build an AsyncLLMEngine with the winning config: enforce_eager=False,
     gpu_memory_utilization=0.78, cudagraph_capture_sizes=[1,2,4].
     """
     from vllm import AsyncEngineArgs, AsyncLLMEngine
     from soundcode.vllm_model_registry import resolve
 
-    reg = resolve(MODEL_NAME)
-    assert reg is not None, f"model {MODEL_NAME} not in registry"
+    reg = resolve(model_name)
+    assert reg is not None, f"model {model_name} not in registry"
     engine_kwargs: dict[str, Any] = dict(
         model=reg["hf_id"],
         dtype=reg.get("dtype", "bfloat16"),
@@ -741,7 +747,29 @@ def append_known_issue(text: str) -> None:
         f.write(text.rstrip() + "\n\n")
 
 
+def _log_toolchain() -> None:
+    """Record verifier-toolchain versions in the run log — verifier latency
+    is the measured quantity, so these are part of the experiment config."""
+    for cmd in (["rustc", "--version"], ["cargo", "--version"],
+                ["g++", "--version"]):
+        try:
+            out = subprocess.run(cmd, capture_output=True, text=True,
+                                 timeout=10).stdout.splitlines()[0]
+        except Exception as e:
+            out = f"{cmd[0]}: unavailable ({e!r})"
+        print(f"  toolchain: {out}", flush=True)
+
+
 async def amain(args) -> None:
+    global RESULTS_DIR, KNOWN_ISSUES_PATH, SENTINEL_PATH
+    if args.out_dir:
+        RESULTS_DIR = Path(args.out_dir).resolve()
+        KNOWN_ISSUES_PATH = RESULTS_DIR / "known_issues.md"
+        SENTINEL_PATH = RESULTS_DIR / "DONE"
+    _log_toolchain()
+    print(f"  results dir: {RESULTS_DIR}", flush=True)
+    print(f"  model: {args.model}  dataset: {args.dataset}  "
+          f"multipl-e revision: {MULTIPLE_REVISION[:12]}", flush=True)
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     if not KNOWN_ISSUES_PATH.exists():
         KNOWN_ISSUES_PATH.write_text(
@@ -791,15 +819,15 @@ async def amain(args) -> None:
         print(f"\nLoading datasets...", flush=True)
         problems_by_lang: dict[str, list[Problem]] = {}
         for lang in {a["lang"] for a in arms_to_run}:
-            probs = load_humaneval(lang)
+            probs = load_humaneval(lang, family=args.dataset)
             if args.limit:
                 probs = probs[: args.limit]
             problems_by_lang[lang] = probs
             print(f"  {lang}: {len(probs)} problems", flush=True)
 
-        print(f"\nBuilding vLLM engine ({MODEL_NAME})...", flush=True)
+        print(f"\nBuilding vLLM engine ({args.model})...", flush=True)
         t0 = time.perf_counter()
-        engine = build_vllm_engine()
+        engine = build_vllm_engine(args.model)
         print(f"  ready in {time.perf_counter()-t0:.1f}s", flush=True)
 
         # Warmup pass (not measured): amortizes cudagraph capture.
@@ -886,6 +914,15 @@ def main() -> None:
                         help="optional: comma-separated arm ids to run")
     parser.add_argument("--force", action="store_true",
                         help="re-run arms even if jsonl exists")
+    parser.add_argument("--out-dir", type=str, default=None,
+                        help="override results dir "
+                             "(default: results/paper_phase1)")
+    parser.add_argument("--model", type=str, default=MODEL_NAME,
+                        help="model registry key "
+                             "(see soundcode/vllm_model_registry.py)")
+    parser.add_argument("--dataset", type=str, default="humaneval",
+                        choices=["humaneval", "mbpp"],
+                        help="MultiPL-E benchmark family")
     args = parser.parse_args()
     asyncio.run(amain(args))
 

@@ -90,7 +90,7 @@ decoding loop in which:
 \item a consumer task drains finished checks in FIFO order;
 \item on the first \emph{blocking} diagnostic, pending checks are
   cancelled, the buffer is truncated to the most recent
-  verifier-blessed checkpoint, and the LM is re-prompted from there.
+  boundary checkpoint, and the LM is re-prompted from there.
 \end{itemize}
 Crucially, the same rollback algorithm underlies the synchronous
 ROCODE-style baseline that we compare against; \emph{the only
@@ -104,7 +104,8 @@ on HumanEval-rs ($n\!=\!156$ after filtering) and HumanEval-cpp
 Qwen2.5-Coder-7B-Instruct \citep{hui2024qwen25coder} via vLLM. We
 report pass@1, mean wall-clock time per problem, mean rollback
 count, and compile rate, plus an ablation on rollback target
-(naive last-checkpoint vs.\ ROCODE's max-entropy formula).
+(naive last-checkpoint vs.\ a recurrence-gated back-off variant
+derived from ROCODE's recurrence rule).
 
 \paragraph{Headline result.}
 Holding the model, the verifier, and the rollback algorithm fixed,

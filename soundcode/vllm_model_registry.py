@@ -28,14 +28,33 @@ Add a new model by appending a new entry; nothing else needs to change.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
+
+
+# Local snapshot directory for the small-model entries below. Override with
+# SOUNDCODE_HF_MODELS_DIR so third parties don't have to mirror the
+# author's home-directory layout (any dir of HF snapshot folders works).
+_HF_MODELS_DIR = Path(
+    os.environ.get("SOUNDCODE_HF_MODELS_DIR",
+                   str(Path.home() / "hf-models")))
 
 
 VLLM_MODEL_REGISTRY: dict[str, dict[str, Any]] = {
     # ─── small coder models (local hf-models cache) ────────────────────
     "qwen2.5-coder-7b": {
-        "hf_id": str(Path.home() / "hf-models" / "qwen2.5-coder-7b-instruct"),
+        "hf_id": str(_HF_MODELS_DIR / "qwen2.5-coder-7b-instruct"),
+        "quantization": None,
+        "dtype": "bfloat16",
+        "max_model_len": 4096,
+        "gpu_memory_utilization": 0.30,
+        "enforce_eager": True,
+    },
+    # Hub id (resolved from the local HF cache when present) — used by the
+    # paper's model-size scaling experiment.
+    "qwen2.5-coder-1.5b": {
+        "hf_id": "Qwen/Qwen2.5-Coder-1.5B-Instruct",
         "quantization": None,
         "dtype": "bfloat16",
         "max_model_len": 4096,
@@ -43,7 +62,7 @@ VLLM_MODEL_REGISTRY: dict[str, dict[str, Any]] = {
         "enforce_eager": True,
     },
     "deepseek-coder-1.3b": {
-        "hf_id": str(Path.home() / "hf-models" / "deepseek-coder-1.3b-base"),
+        "hf_id": str(_HF_MODELS_DIR / "deepseek-coder-1.3b-base"),
         "quantization": None,
         "dtype": "bfloat16",
         "max_model_len": 4096,
@@ -51,7 +70,7 @@ VLLM_MODEL_REGISTRY: dict[str, dict[str, Any]] = {
         "enforce_eager": True,
     },
     "starcoder2-7b": {
-        "hf_id": str(Path.home() / "hf-models" / "starcoder2-7b"),
+        "hf_id": str(_HF_MODELS_DIR / "starcoder2-7b"),
         "quantization": None,
         "dtype": "bfloat16",
         "max_model_len": 4096,

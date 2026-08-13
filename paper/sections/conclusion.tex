@@ -5,7 +5,7 @@ verifier-guided code generation. The system is a producer-consumer
 decoding loop in which a compiler verifier runs in a
 background task at each depth-zero structural boundary, the producer
 LM streams tokens without blocking, and a consumer rolls back the
-buffer to the last verifier-confirmed checkpoint only on a returned
+buffer to the most recent boundary checkpoint only on a returned
 blocking diagnostic. The same rollback algorithm underlies the
 synchronous ROCODE-style baseline \citep{jiang2024rocode}; the
 sync-versus-async axis is isolated at fixed verifier, fixed model,

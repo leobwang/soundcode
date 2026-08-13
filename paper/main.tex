@@ -76,7 +76,7 @@ which a compiler verifier (\code{cargo check} for Rust,
 $g{+}{+}\;\code{-fsyntax-only}$ for C++) runs
 \emph{asynchronously} alongside the LLM, spawning a check at each
 depth-zero structural boundary (\code{;} or \code{\}}) and triggering
-rollback to the last verified checkpoint only when a returned
+rollback to the most recent boundary checkpoint only when a returned
 diagnostic is blocking. The same rollback algorithm underlies the
 synchronous ROCODE baseline \citep{jiang2024rocode}; we isolate the
 sync-versus-async axis at fixed verifier, fixed model, and fixed

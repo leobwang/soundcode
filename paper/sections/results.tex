@@ -4,8 +4,10 @@
 
 \paragraph{Base model.}
 Qwen2.5-Coder-7B-Instruct \citep{hui2024qwen25coder}, served by
-vLLM 0.20.x with FP16 weights and a 4096-token context. Greedy
-decoding at $T\!=\!0$, $\code{max\_tokens}\!=\!512$, with a per-problem
+vLLM 0.20.x with bfloat16 weights and a 4096-token context. Greedy
+decoding at $T\!=\!0$, $\code{max\_tokens}\!=\!512$ per generate
+call (a problem that rolls back restarts generation and may emit
+more than 512 tokens in total), with a per-problem
 wall-clock budget of $60$\,s. The 60\,s cap is on the entire
 problem, including verifier wall time; over-budget problems are
 counted as failures.
@@ -32,7 +34,7 @@ verifier call of a session is not slower than the steady state.
 across the scheduling choices, the rollback policies, and the
 verifier: \textbf{Vanilla} (no verifier), \textbf{SyncCargo}
 (synchronous, ROCODE-style) and \textbf{AsyncCargo} (SoundCode)
-each crossed with the \textsc{NaiveLast} / \textsc{ROCODEEntropy} /
+each crossed with the \textsc{NaiveLast} / \textsc{RecBackoff} /
 \textsc{NaiveLast+Penalty} rollback policies (all with
 \code{cargo check} / $g{+}{+}\;\code{-fsyntax-only}$ as verifier),
 plus \textbf{AsyncLSP} (rust-analyzer via \code{multilspy} as
@@ -42,19 +44,22 @@ verifier, \textsc{NaiveLast} policy) and \textbf{ROCODE-upstream}
 Of these nine, this paper reports \textbf{four}, each run on both
 languages: Vanilla, SyncCargo\,+\,\textsc{NaiveLast},
 AsyncCargo\,+\,\textsc{NaiveLast}, and
-AsyncCargo\,+\,\textsc{ROCODEEntropy}. The remaining arms were
+AsyncCargo\,+\,\textsc{RecBackoff}. The remaining arms were
 \emph{not run} before the deadline and no results for them appear
-anywhere in this paper: SyncCargo\,+\,\textsc{ROCODEEntropy}, both
+anywhere in this paper: SyncCargo\,+\,\textsc{RecBackoff}, both
 \textsc{NaiveLast+Penalty} arms, AsyncLSP, and ROCODE-upstream
 (the last skipped for the separate reason documented in
 \S\ref{sec:results-rocode}). Two consequences of this scoping bear
 stating explicitly. First, every measurement in this paper is
 \emph{compiler}-supervised; the LSP verifier driver is implemented
 in the released code but was never evaluated, so no claim here
-extends to LSP-based verification. Second, the entropy-rollback
+extends to LSP-based verification. Second, the rollback-policy
 ablation (\S\ref{sec:results-ablation-policy}) is available only
-under async scheduling, and the \textsc{Penalty} policy is
-specified (\S\ref{sec:where-rollback}) but entirely unevaluated.
+under async scheduling and compares \textsc{NaiveLast} against
+\textsc{RecBackoff} --- ROCODE's full entropy-based target
+selection was not wired into the sampler and is not evaluated
+anywhere in this paper (\S\ref{sec:where-rollback}), and the
+\textsc{Penalty} policy is likewise specified but unevaluated.
 
 \paragraph{Metrics.}
 pass@1, mean wall-clock time per problem (seconds), mean rollback
@@ -71,7 +76,7 @@ overlap.
 \begin{table}[t]
 \centering
 \small
-\setlength{\tabcolsep}{2.3pt}
+\setlength{\tabcolsep}{1.6pt}
 \caption{Per-arm Phase~1 summary. \textbf{Sched.}\ is the
 verifier-loop scheduling (\textsf{plain}: no verifier; \textsf{sync}:
 ROCODE-style block-and-wait; \textsf{async}: SoundCode
@@ -93,12 +98,12 @@ Arm & Lang & Sched. & Rollback & $n$ & pass@1 & comp. & mean wall & median & mea
 Vanilla            & Rust & plain  & --      & 156 & 69.9\% & 86.5\% & 0.713          & 0.627          & --   & 70.3 \\
 SyncCargo Naive    & Rust & sync   & naive   & 156 & 72.4\% & 89.7\% & 1.300          & 1.194          & 0.69 & 74.8 \\
 AsyncCargo Naive   & Rust & async  & naive   & 156 & 69.2\% & 86.5\% & \textbf{0.819} & \textbf{0.683} & 0.98 & 69.8 \\
-AsyncCargo Entropy & Rust & async  & entropy & 156 & 66.0\% & 81.4\% & 0.948          & 0.683          & 0.99 & 70.5 \\
+AsyncCargo RecBackoff & Rust & async  & recb & 156 & 66.0\% & 81.4\% & 0.948          & 0.683          & 0.99 & 70.5 \\
 \midrule
 Vanilla            & C++  & plain  & --      & 161 & 77.0\% & 96.3\% & 0.877          & 0.781          & --   & 86.5 \\
 SyncCargo Naive    & C++  & sync   & naive   & 161 & 71.4\% & 88.8\% & 3.645          & 3.137          & 0.27 & 100.2 \\
 AsyncCargo Naive   & C++  & async  & naive   & 161 & 76.4\% & 95.7\% & \textbf{1.235} & \textbf{1.098} & 0.22 & 86.2 \\
-AsyncCargo Entropy & C++  & async  & entropy & 161 & 76.4\% & 96.3\% & 1.282          & 1.100          & 0.26 & 86.5 \\
+AsyncCargo RecBackoff & C++  & async  & recb & 161 & 76.4\% & 96.3\% & 1.282          & 1.100          & 0.26 & 86.5 \\
 \bottomrule
 \end{tabular}
 \\[2pt]
@@ -139,13 +144,16 @@ sync-vs-async comparison at matched \textsc{NaiveLast} policy shows
 $10$ vs $5$ discordant, $p\!=\!0.30$; C++: $7$ vs $15$,
 $p\!=\!0.13$), and no verified arm differs significantly from
 \textsf{Vanilla} on pass@1. The significant pairwise effects in the
-data uniformly \emph{disfavor} the sync and entropy arms: on
+data uniformly \emph{disfavor} the sync and \textsc{RecBackoff}
+arms: on
 compile rate, \textsf{SyncCargo}-C++ compiles less often than both
 \textsf{Vanilla} ($p\!=\!0.004$) and \textsf{AsyncCargo}
-($p\!=\!0.007$), and the entropy arm on Rust compiles less often
+($p\!=\!0.007$), and the \textsc{RecBackoff} arm on Rust compiles
+less often
 than \textsf{Vanilla} ($p\!=\!0.02$), \textsf{SyncCargo}
 ($p\!=\!0.001$), and naive-async ($p\!=\!0.008$); on pass@1, the
-entropy arm trails \textsf{SyncCargo} on Rust ($p\!=\!0.04$). None
+\textsc{RecBackoff} arm trails \textsf{SyncCargo} on Rust
+($p\!=\!0.04$). None
 of these effects favors verification over plain decoding.
 Accordingly, this paper claims a \emph{latency} improvement only:
 the wall-time gaps in Table~\ref{tab:main} are large, consistent
@@ -220,11 +228,13 @@ visualizes this decomposition.
 
 \subsection{Ablation: rollback policy}\label{sec:results-ablation-policy}
 
-Within the AsyncCargo arms, the \textsc{ROCODEEntropy} fallback does
+Within the AsyncCargo arms, the recurrence-gated back-off
+(\textsc{RecBackoff}, \S\ref{sec:where-rollback}) does
 \emph{not} improve over the simpler \textsc{NaiveLast} policy on
-this benchmark: on Rust, entropy is $66.0\%$ pass@1 vs naive
+this benchmark: on Rust, \textsc{RecBackoff} is $66.0\%$ pass@1 vs
+naive
 $69.2\%$ (and compiles significantly less often, $p\!=\!0.008$); on
-C++, entropy ties naive at $76.4\%$. Rollback is rare overall ---
+C++, it ties naive at $76.4\%$. Rollback is rare overall ---
 $132$ of $156$ Rust problems and $155$ of $161$ C++ problems never
 roll back under AsyncCargo-Naive ($0.98$ and $0.22$ mean
 rollbacks/problem; Figure~\ref{fig:rollback-dist}) --- but on the
@@ -235,8 +245,11 @@ budget maximum. In other words, the problems that roll back are
 mostly problems that rollback fails to rescue, under \emph{either}
 target-selection policy. The clean read is that the simpler policy
 suffices on this benchmark: most problems never exercise the policy
-at all, and on the recurrence-heavy minority the entropy target
-fails alongside the naive one.
+at all, and on the recurrence-heavy minority the back-off target
+fails alongside the naive one. We reiterate the scoping note from
+\S\ref{sec:setup}: this ablation tests ROCODE's recurrence
+\emph{gate}, not its entropy-based target selection, which was not
+evaluated.
 
 \begin{figure}[t]
   \centering
@@ -280,7 +293,7 @@ since the algorithmic comparison we care about is already isolated
 by the \textsf{SyncCargo~Naive} arms. Those arms run ROCODE's
 algorithm \emph{exactly}~--- block at every depth-zero structural
 boundary, run the program analyzer to completion, classify the
-verdict, roll back to the last verifier-confirmed checkpoint on a
+verdict, roll back to the most recent boundary checkpoint on a
 blocking error~--- on the same Qwen2.5-Coder-7B model and the same
 \code{g++ -fsyntax-only}/\code{cargo check} verifier the async arms
 use. The only differences from upstream ROCODE are the language
@@ -313,3 +326,41 @@ blocking rollback incurs the discarded suffix's decode time.
     $76\%$ to $29\%$ on C++ and from $45\%$ to $13\%$ on Rust.}
   \label{fig:overhead}
 \end{figure}
+
+\subsection{Reproducibility}\label{sec:repro}
+
+All artifacts needed to regenerate this paper's numbers are in the
+repository: the experiment runner
+(\code{scripts/paper\_phase1.py}), the analysis script
+(\code{scripts/paper\_phase2.py}), the raw per-problem JSONL
+records and run log, and a locked Python environment
+(\code{uv.lock}: vLLM 0.20.2, torch 2.11.0, datasets 4.8.5). The
+model is the stock HuggingFace snapshot of
+Qwen2.5-Coder-7B-Instruct; the benchmark revision of
+\code{nuprl/MultiPL-E} is pinned in the runner. The full grid runs
+in ${\sim}40$ minutes on the hardware of \S\ref{sec:setup}
+(\code{uv run python scripts/paper\_phase1.py}, then
+\code{scripts/paper\_phase2.py} for aggregates and figures).
+
+\paragraph{Verification.} We re-executed all eight arms on the
+first 20 problems per language and compared against the stored
+records: per-problem compile, test-pass, and token-count outcomes
+matched exactly on $160/160$ problem-runs, rollback counts were
+identical, per-arm mean wall-times agreed within $3\%$, and the
+sync/async wall-time ratios on the subset reproduced ($1.47\times$
+re-run vs $1.47\times$ stored on Rust; $3.30\times$ vs
+$3.33\times$ on C++). The analysis pipeline is deterministic:
+re-running it regenerates the aggregate CSV and report
+byte-identically and all six figures content-identically.
+
+\paragraph{Determinism caveats.} Plain and sync arms are
+token-level deterministic up to vLLM prefix-caching numerics
+(greedy $T\!=\!0$, problems served sequentially). Async-arm
+outcomes depend in principle on verifier-vs-decoder wall-time
+races (whether a verdict lands before token $k$ or $k{+}1$), so
+their rollback offsets and generated code reproduce approximately
+rather than by construction --- though they reproduced exactly in
+the verification above. All wall-time magnitudes are specific to
+the hardware and toolchain; the runner logs \code{rustc},
+\code{cargo}, and \code{g{+}{+}} versions with each run
+(verification used rustc 1.92.0 and g{+}{+} 13.3.0).
