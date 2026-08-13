@@ -98,6 +98,15 @@ EXTRA_ARMS: list[dict[str, Any]] = [
      "scheduling": "async", "rollback": "naive", "verifier": "lsp"},
     {"id": "sync_lsp_rust",       "lang": "rust", "mode": "soundcode",
      "scheduling": "sync",  "rollback": "naive", "verifier": "lsp"},
+    # Third language: Java / javac.
+    {"id": "plain_java",          "lang": "java", "mode": "plain"},
+    {"id": "sync_naive_java",     "lang": "java", "mode": "soundcode",
+     "scheduling": "sync",  "rollback": "naive"},
+    {"id": "async_naive_java",    "lang": "java", "mode": "soundcode",
+     "scheduling": "async", "rollback": "naive"},
+    # Matched-budget resampling baseline (compiler as post-hoc filter).
+    {"id": "resample_rust",       "lang": "rust", "mode": "resample"},
+    {"id": "resample_cpp",        "lang": "cpp",  "mode": "resample"},
 ]
 
 
@@ -119,6 +128,12 @@ class LangAdapter:
         raise NotImplementedError
 
     def post_hoc_test(self, prompt: str, completion: str, tests: str) -> tuple[bool, bool]:
+        raise NotImplementedError
+
+    def compile_only(self, prompt: str, completion: str) -> bool:
+        """Does prompt+completion (+ function closer trimmed) compile?
+        Used by the resample-baseline arm as its selection filter — tests
+        are never consulted during selection."""
         raise NotImplementedError
 
 
@@ -175,6 +190,27 @@ class RustAdapter(LangAdapter):
         finally:
             shutil.rmtree(ws, ignore_errors=True)
 
+    def compile_only(self, prompt: str, completion: str) -> bool:
+        ws = self.fresh_workspace()
+        try:
+            body = completion
+            for stop in ("\n}",):
+                if body.endswith(stop):
+                    body = body[: -len(stop)]
+            src = prompt + body + "\n}\n\nfn main() {}\n"
+            (ws / "src" / "main.rs").write_text(src)
+            try:
+                proc = subprocess.run(
+                    ["cargo", "build", "--offline"],
+                    cwd=str(ws), capture_output=True, timeout=30,
+                    env={**os.environ, "CARGO_TERM_COLOR": "never"},
+                )
+            except subprocess.TimeoutExpired:
+                return False
+            return proc.returncode == 0
+        finally:
+            shutil.rmtree(ws, ignore_errors=True)
+
 
 class CppAdapter(LangAdapter):
     def __init__(self) -> None:
@@ -222,6 +258,109 @@ class CppAdapter(LangAdapter):
         finally:
             shutil.rmtree(ws, ignore_errors=True)
 
+    def compile_only(self, prompt: str, completion: str) -> bool:
+        ws = self.fresh_workspace()
+        try:
+            body = completion
+            for stop in ("\n}",):
+                if body.endswith(stop):
+                    body = body[: -len(stop)]
+            src = prompt + body + "\n}\n\nint main() { return 0; }\n"
+            srcfile = ws / "main.cpp"
+            srcfile.write_text(src)
+            try:
+                proc = subprocess.run(
+                    ["g++", "-std=c++17", "-O0", "-w", "-fsyntax-only",
+                     str(srcfile)],
+                    capture_output=True, timeout=30,
+                )
+            except subprocess.TimeoutExpired:
+                return False
+            return proc.returncode == 0
+        finally:
+            shutil.rmtree(ws, ignore_errors=True)
+
+
+class JavaAdapter(LangAdapter):
+    def __init__(self) -> None:
+        self.lang = "java"
+        # Close the method with a throw (satisfies any return type), then
+        # the class — the Java analog of Rust's `unreachable!()` shim.
+        self.function_closer = (
+            "\n        throw new RuntimeException(\"incomplete\");\n    }\n}\n")
+        # MultiPL-E humaneval-java stop token is the method-closing brace at
+        # one indent level.
+        self.stop_strings = ["\n    }"]
+        # MultiPL-E Java depends on javatuples (Pair/Triplet in prompts and
+        # tests); the official evaluation container ships it on the
+        # classpath. javac and java both honor the CLASSPATH env var, which
+        # also reaches JavacChecker's in-loop subprocess (env passthrough).
+        jar = PROJECT_ROOT / "vendor" / "javatuples-1.2.jar"
+        if jar.exists():
+            os.environ["CLASSPATH"] = f".:{jar}"
+
+    def fresh_workspace(self) -> Path:
+        return Path(tempfile.mkdtemp(prefix="pp1-java-"))
+
+    def make_checker(self, workspace: Path):
+        from soundcode.lang.java import JavacChecker
+        return JavacChecker(workspace=workspace,
+                            file_in_workspace="Problem.java")
+
+    def post_hoc_test(self, prompt: str, completion: str, tests: str) -> tuple[bool, bool]:
+        ws = self.fresh_workspace()
+        try:
+            body = completion
+            for stop in ("\n    }",):
+                if body.endswith(stop):
+                    body = body[: -len(stop)]
+            src = prompt + body + "\n" + tests
+            (ws / "Problem.java").write_text(src)
+            try:
+                proc = subprocess.run(
+                    ["javac", "Problem.java"],
+                    cwd=str(ws), capture_output=True, timeout=30,
+                )
+            except subprocess.TimeoutExpired:
+                return False, False
+            if proc.returncode != 0:
+                return False, False
+            try:
+                proc = subprocess.run(
+                    ["java", "-ea", "Problem"],
+                    cwd=str(ws), capture_output=True, timeout=15,
+                )
+            except subprocess.TimeoutExpired:
+                return True, False
+            return True, (proc.returncode == 0)
+        finally:
+            shutil.rmtree(ws, ignore_errors=True)
+
+    def compile_only(self, prompt: str, completion: str) -> bool:
+        ws = self.fresh_workspace()
+        try:
+            body = completion
+            for stop in ("\n    }",):
+                if body.endswith(stop):
+                    body = body[: -len(stop)]
+            src = prompt + body + "\n    }\n}\n"
+            (ws / "Problem.java").write_text(src)
+            try:
+                proc = subprocess.run(
+                    ["javac", "Problem.java"],
+                    cwd=str(ws), capture_output=True, timeout=30,
+                )
+            except subprocess.TimeoutExpired:
+                return False
+            return proc.returncode == 0
+        finally:
+            shutil.rmtree(ws, ignore_errors=True)
+
+
+ADAPTERS: dict[str, type[LangAdapter]] = {
+    "rust": RustAdapter, "cpp": CppAdapter, "java": JavaAdapter,
+}
+
 
 # ─── dataset loading ───────────────────────────────────────────────────────
 
@@ -237,7 +376,7 @@ class Problem:
 
 def load_humaneval(lang: str, family: str = "humaneval") -> list[Problem]:
     from datasets import load_dataset
-    suffix = {"rust": "rs", "cpp": "cpp"}.get(lang)
+    suffix = {"rust": "rs", "cpp": "cpp", "java": "java"}.get(lang)
     if suffix is None:
         raise ValueError(lang)
     if family not in ("humaneval", "mbpp"):
@@ -375,6 +514,93 @@ async def run_plain(engine, prob: Problem, adapter: LangAdapter, *,
         n_rollbacks=0, n_checker_calls=0,
         compile_ok=compile_ok, tests_pass=tests_pass,
         timeout=timed_out, generated_code=full_text, error=err,
+    )
+
+
+# ─── resample-baseline arm ─────────────────────────────────────────────────
+
+
+async def run_resample(engine, prob: Problem, adapter: LangAdapter, *,
+                       timeout_s: float, max_tokens: int,
+                       temperature: float = 0.8,
+                       max_samples: int = 32) -> RunResult:
+    """Matched-budget i.i.d. resampling baseline (Olausson-style).
+
+    Sample full completions at T=temperature (seeded per sample) until one
+    COMPILES or the wall budget / sample cap is exhausted. The compiler is
+    a post-hoc filter, not an in-loop supervisor; unit tests are never
+    consulted during selection. The submission is the first compiling
+    sample, else the last sample drawn. Fields: n_rollbacks = resamples
+    performed, n_checker_calls = compile-filter invocations.
+    """
+    from vllm import SamplingParams
+
+    t0 = time.perf_counter()
+    total_tokens = 0
+    samples = 0
+    chosen = ""
+    timed_out = False
+    err = None
+
+    try:
+        while samples < max_samples:
+            elapsed = time.perf_counter() - t0
+            if elapsed >= timeout_s:
+                timed_out = chosen == ""
+                break
+            params = SamplingParams(
+                temperature=temperature, top_p=0.95,
+                seed=samples,  # deterministic-ish reproducibility
+                max_tokens=max_tokens,
+                stop=adapter.stop_strings or None,
+            )
+            req_id = f"pp1-rs-{uuid.uuid4().hex[:10]}"
+            text = ""
+            n_tok = 0
+
+            async def _gen():
+                nonlocal text, n_tok
+                async for out in engine.generate(prob.prompt, params, req_id):
+                    if out.outputs:
+                        text = out.outputs[0].text or ""
+                        n_tok = len(out.outputs[0].token_ids or [])
+                    if out.finished:
+                        break
+
+            budget = max(0.5, timeout_s - (time.perf_counter() - t0))
+            try:
+                await asyncio.wait_for(_gen(), timeout=budget)
+            except asyncio.TimeoutError:
+                with contextlib.suppress(Exception):
+                    await engine.abort(req_id)
+                if chosen == "":
+                    chosen = text
+                break
+            samples += 1
+            total_tokens += n_tok
+            chosen = text
+            compiled = await asyncio.to_thread(
+                adapter.compile_only, prob.prompt, text)
+            if compiled:
+                break
+    except Exception as e:
+        err = repr(e)
+
+    wall = time.perf_counter() - t0
+    compile_ok = tests_pass = False
+    if chosen and not err:
+        try:
+            compile_ok, tests_pass = await asyncio.to_thread(
+                adapter.post_hoc_test, prob.prompt, chosen, prob.tests)
+        except Exception as e:
+            err = f"post_hoc: {e!r}"
+
+    return RunResult(
+        arm="", problem_id=prob.name, lang=prob.language,
+        wall_time_s=wall, n_tokens=total_tokens,
+        n_rollbacks=max(0, samples - 1), n_checker_calls=samples,
+        compile_ok=compile_ok, tests_pass=tests_pass,
+        timeout=timed_out, generated_code=chosen, error=err,
     )
 
 
@@ -731,7 +957,7 @@ async def run_arm(
 ) -> None:
     """Run an arm over all problems, writing one JSONL line per problem."""
     lang = arm["lang"]
-    adapter: LangAdapter = RustAdapter() if lang == "rust" else CppAdapter()
+    adapter: LangAdapter = ADAPTERS[lang]()
 
     out_f = out_path.open("a", buffering=1)
     try:
@@ -750,6 +976,11 @@ async def run_arm(
                         rollback=arm["rollback"],
                         timeout_s=timeout_s, max_tokens=max_tokens,
                         verifier=arm.get("verifier", "cargo"),
+                    )
+                elif mode == "resample":
+                    r = await run_resample(
+                        engine, prob, adapter,
+                        timeout_s=timeout_s, max_tokens=max_tokens,
                     )
                 else:
                     raise ValueError(f"unknown mode: {mode}")
