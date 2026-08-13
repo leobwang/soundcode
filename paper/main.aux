@@ -33,12 +33,12 @@
 \citation{soundcode2025github}
 \citation{olausson2024selfrepair}
 \citation{wang2025semguard}
-\citation{agrawal2023monitor}
-\citation{agrawal2023monitor}
 \@writefile{toc}{\contentsline {paragraph}{Headline result.}{3}{section*.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{Contributions.}{3}{section*.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {2}Related Work}{3}{section.2}\protected@file@percent }
 \newlabel{sec:related}{{2}{3}{Related Work}{section.2}{}}
+\citation{agrawal2023monitor}
+\citation{agrawal2023monitor}
 \citation{agrawal2023monitor}
 \citation{agrawal2023monitor}
 \citation{jiang2024rocode}
@@ -92,15 +92,15 @@
 \newlabel{sec:rw-bench}{{2.5}{6}{Benchmarks and base models}{subsection.2.5}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.6}Synthesis}{6}{subsection.2.6}\protected@file@percent }
 \newlabel{sec:rw-synth}{{2.6}{6}{Synthesis}{subsection.2.6}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {3}Method}{6}{section.3}\protected@file@percent }
-\newlabel{sec:method}{{3}{6}{Method}{section.3}{}}
 \citation{vllm2023}
-\citation{jiang2024rocode}
-\citation{jiang2024rocode}
 \@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces SoundCode's producer-consumer architecture. The producer LM streams tokens; a structural boundary detector identifies depth-zero \texttt  {;} and \texttt  {\}} in the function body; at each boundary an async verifier task is spawned on a snapshot of the current buffer; a consumer drains finished verifier tasks in FIFO order; on the first blocking diagnostic, pending tasks are cancelled and the buffer is rolled back to the most recent boundary checkpoint.}}{7}{figure.4}\protected@file@percent }
 \newlabel{fig:arch}{{4}{7}{SoundCode's producer-consumer architecture. The producer LM streams tokens; a structural boundary detector identifies depth-zero \code {;} and \code {\}} in the function body; at each boundary an async verifier task is spawned on a snapshot of the current buffer; a consumer drains finished verifier tasks in FIFO order; on the first blocking diagnostic, pending tasks are cancelled and the buffer is rolled back to the most recent boundary checkpoint}{figure.4}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {3}Method}{7}{section.3}\protected@file@percent }
+\newlabel{sec:method}{{3}{7}{Method}{section.3}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.1}System architecture}{7}{subsection.3.1}\protected@file@percent }
 \newlabel{sec:arch}{{3.1}{7}{System architecture}{subsection.3.1}{}}
+\citation{jiang2024rocode}
+\citation{jiang2024rocode}
 \citation{jiang2024rocode}
 \citation{jiang2024rocode}
 \citation{jiang2024rocode}
@@ -127,12 +127,12 @@
 \citation{jiang2024rocode}
 \citation{wang2025semguard}
 \citation{ugare2025itergen}
-\citation{jiang2024rocode}
 \@writefile{toc}{\contentsline {paragraph}{Diagnostic classification.}{10}{section*.8}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.5}Where to roll back: rollback policies}{10}{subsection.3.5}\protected@file@percent }
 \newlabel{sec:where-rollback}{{3.5}{10}{Where to roll back: rollback policies}{subsection.3.5}{}}
 \@writefile{toc}{\contentsline {paragraph}{\textsc  {NaiveLast} (default, and the empirical winner).}{10}{section*.9}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{\textsc  {RecBackoff} (evaluated).}{10}{section*.10}\protected@file@percent }
+\citation{jiang2024rocode}
 \citation{jiang2024rocode}
 \citation{zhou2024lats}
 \citation{soundcode2025github}
@@ -151,63 +151,64 @@
 \newlabel{sec:setup}{{4.1}{11}{Setup}{subsection.4.1}{}}
 \@writefile{toc}{\contentsline {paragraph}{Base model.}{11}{section*.14}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{Benchmarks.}{11}{section*.15}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Hardware.}{11}{section*.16}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Per-arm Phase~1 summary. \textbf  {Sched.}\ is the verifier-loop scheduling (\textsf  {plain}: no verifier; \textsf  {sync}: ROCODE-style block-and-wait; \textsf  {async}: SoundCode producer-consumer); \textbf  {Rollback} is the policy when a blocking diagnostic fires. \textbf  {pass@1} is compile $\wedge $ tests-pass on the official MultiPL-E test cases; \textbf  {comp.}\ is compile rate; \textbf  {wall} is per-problem wall-clock; \textbf  {rb} is rollback count; \textbf  {toks} is generated tokens. Bold marks the fastest verified (sync/async) arm's wall-clock per language; no verified arm significantly improves pass@1 or compile rate over \textsf  {Vanilla} (see \emph  {Statistical note}). The \textsc  {ROCODE-upstream-cpp} arm was skipped~--- see footnote.}}{12}{table.2}\protected@file@percent }
-\newlabel{tab:main}{{2}{12}{Per-arm Phase~1 summary. \textbf {Sched.}\ is the verifier-loop scheduling (\textsf {plain}: no verifier; \textsf {sync}: ROCODE-style block-and-wait; \textsf {async}: SoundCode producer-consumer); \textbf {Rollback} is the policy when a blocking diagnostic fires. \textbf {pass@1} is compile $\wedge $ tests-pass on the official MultiPL-E test cases; \textbf {comp.}\ is compile rate; \textbf {wall} is per-problem wall-clock; \textbf {rb} is rollback count; \textbf {toks} is generated tokens. Bold marks the fastest verified (sync/async) arm's wall-clock per language; no verified arm significantly improves pass@1 or compile rate over \textsf {Vanilla} (see \emph {Statistical note}). The \textsc {ROCODE-upstream-cpp} arm was skipped~--- see footnote}{table.2}{}}
+\@writefile{toc}{\contentsline {paragraph}{Hardware.}{12}{section*.16}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{Arms.}{12}{section*.17}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{Metrics.}{12}{section*.18}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Runner revision (v2).}{12}{section*.19}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Main results}{12}{subsection.4.2}\protected@file@percent }
 \newlabel{sec:main-results}{{4.2}{12}{Main results}{subsection.4.2}{}}
-\@writefile{toc}{\contentsline {paragraph}{Statistical note.}{12}{section*.19}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Mean wall-clock time per problem, per arm. \textsf  {sync} (red) and \textsf  {async} (teal) bars share the same model, the same verifier, and the same rollback algorithm; they differ only in scheduling. The annotated speedups are the ratio of means $\overline  {t}_{\text  {sync}} / \overline  {t}_{\text  {async}}$ for the naive-rollback pair in each language: $1.59\times $ on Rust, $2.95\times $ on C++. Plain (gray) is the verifier-free baseline.}}{13}{figure.6}\protected@file@percent }
-\newlabel{fig:walltime-bars}{{6}{13}{Mean wall-clock time per problem, per arm. \textsf {sync} (red) and \textsf {async} (teal) bars share the same model, the same verifier, and the same rollback algorithm; they differ only in scheduling. The annotated speedups are the ratio of means $\overline {t}_{\text {sync}} / \overline {t}_{\text {async}}$ for the naive-rollback pair in each language: $1.59\times $ on Rust, $2.95\times $ on C++. Plain (gray) is the verifier-free baseline}{figure.6}{}}
+\@writefile{toc}{\contentsline {paragraph}{Statistical note.}{12}{section*.20}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Per-arm Phase~1 summary. \textbf  {Sched.}\ is the verifier-loop scheduling (\textsf  {plain}: no verifier; \textsf  {sync}: ROCODE-style block-and-wait; \textsf  {async}: SoundCode producer-consumer); \textbf  {Rollback} is the policy when a blocking diagnostic fires. \textbf  {pass@1} is compile $\wedge $ tests-pass on the official MultiPL-E test cases; \textbf  {comp.}\ is compile rate; \textbf  {wall} is per-problem wall-clock; \textbf  {rb} is rollback count; \textbf  {toks} is generated tokens. Bold marks the fastest verified (sync/async) arm's wall-clock per language; no verified arm significantly improves pass@1 or compile rate over \textsf  {Vanilla} (see \emph  {Statistical note}). The \textsc  {ROCODE-upstream-cpp} arm was skipped~--- see footnote.}}{13}{table.2}\protected@file@percent }
+\newlabel{tab:main}{{2}{13}{Per-arm Phase~1 summary. \textbf {Sched.}\ is the verifier-loop scheduling (\textsf {plain}: no verifier; \textsf {sync}: ROCODE-style block-and-wait; \textsf {async}: SoundCode producer-consumer); \textbf {Rollback} is the policy when a blocking diagnostic fires. \textbf {pass@1} is compile $\wedge $ tests-pass on the official MultiPL-E test cases; \textbf {comp.}\ is compile rate; \textbf {wall} is per-problem wall-clock; \textbf {rb} is rollback count; \textbf {toks} is generated tokens. Bold marks the fastest verified (sync/async) arm's wall-clock per language; no verified arm significantly improves pass@1 or compile rate over \textsf {Vanilla} (see \emph {Statistical note}). The \textsc {ROCODE-upstream-cpp} arm was skipped~--- see footnote}{table.2}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Mean wall-clock time per problem, per arm. \textsf  {sync} (red) and \textsf  {async} (teal) bars share the same model, the same verifier, and the same rollback algorithm; they differ only in scheduling. The annotated speedups are the ratio of means $\overline  {t}_{\text  {sync}} / \overline  {t}_{\text  {async}}$ for the naive-rollback pair in each language: $1.47\times $ on Rust, $2.16\times $ on C++. Plain (gray) is the verifier-free baseline.}}{13}{figure.6}\protected@file@percent }
+\newlabel{fig:walltime-bars}{{6}{13}{Mean wall-clock time per problem, per arm. \textsf {sync} (red) and \textsf {async} (teal) bars share the same model, the same verifier, and the same rollback algorithm; they differ only in scheduling. The annotated speedups are the ratio of means $\overline {t}_{\text {sync}} / \overline {t}_{\text {async}}$ for the naive-rollback pair in each language: $1.47\times $ on Rust, $2.16\times $ on C++. Plain (gray) is the verifier-free baseline}{figure.6}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Headline finding}{13}{subsection.4.3}\protected@file@percent }
 \newlabel{sec:headline}{{4.3}{13}{Headline finding}{subsection.4.3}{}}
-\@writefile{toc}{\contentsline {paragraph}{C++.}{13}{section*.20}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Rust.}{13}{section*.21}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Rust vs.\ C++: the verifier-cost spectrum}{13}{subsection.4.4}\protected@file@percent }
-\newlabel{sec:headline-contrast}{{4.4}{13}{Rust vs.\ C++: the verifier-cost spectrum}{subsection.4.4}{}}
+\@writefile{toc}{\contentsline {paragraph}{C++.}{13}{section*.21}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Rust.}{13}{section*.22}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Per-problem sync wall-time (x) vs async wall-time (y), one dot per problem. Dots below the diagonal are problems on which async is faster than sync. The C++ cloud sits visibly below the diagonal at every cost level; the Rust cloud crowds the diagonal at the cheap end (where the verifier is fast and sync is already adequate) but still skews under it.}}{14}{figure.7}\protected@file@percent }
 \newlabel{fig:speedup-scatter}{{7}{14}{Per-problem sync wall-time (x) vs async wall-time (y), one dot per problem. Dots below the diagonal are problems on which async is faster than sync. The C++ cloud sits visibly below the diagonal at every cost level; the Rust cloud crowds the diagonal at the cheap end (where the verifier is fast and sync is already adequate) but still skews under it}{figure.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Rust vs.\ C++: the verifier-cost spectrum}{14}{subsection.4.4}\protected@file@percent }
+\newlabel{sec:headline-contrast}{{4.4}{14}{Rust vs.\ C++: the verifier-cost spectrum}{subsection.4.4}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Ablation: rollback policy}{14}{subsection.4.5}\protected@file@percent }
 \newlabel{sec:results-ablation-policy}{{4.5}{14}{Ablation: rollback policy}{subsection.4.5}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.6}Extended arms (post-deadline follow-up)}{14}{subsection.4.6}\protected@file@percent }
-\newlabel{sec:extended}{{4.6}{14}{Extended arms (post-deadline follow-up)}{subsection.4.6}{}}
-\@writefile{toc}{\contentsline {paragraph}{ROCODEEntropy, fully wired.}{14}{section*.22}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Distribution of rollback counts per problem, faceted by language $\times $ scheduling. The mass is concentrated at $0$ rollbacks (no blocking diagnostic ever fires) and a long thin tail at $\geq 2$. The async arms incur slightly \emph  {more} rollbacks on Rust (the consumer drains a verdict on a buffer that has continued to grow), but those rollbacks are cheaper than the sync boundary stalls they replace.}}{15}{figure.8}\protected@file@percent }
-\newlabel{fig:rollback-dist}{{8}{15}{Distribution of rollback counts per problem, faceted by language $\times $ scheduling. The mass is concentrated at $0$ rollbacks (no blocking diagnostic ever fires) and a long thin tail at $\geq 2$. The async arms incur slightly \emph {more} rollbacks on Rust (the consumer drains a verdict on a buffer that has continued to grow), but those rollbacks are cheaper than the sync boundary stalls they replace}{figure.8}{}}
-\@writefile{toc}{\contentsline {paragraph}{LSP verification.}{15}{section*.23}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Model-size scaling.}{15}{section*.24}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Distribution of rollback counts per problem, faceted by language $\times $ scheduling. The mass is concentrated at $0$ rollbacks (no blocking diagnostic ever fires); firing problems settle within one or two retries under \textsc  {NaiveLast} in both schedulings.}}{15}{figure.8}\protected@file@percent }
+\newlabel{fig:rollback-dist}{{8}{15}{Distribution of rollback counts per problem, faceted by language $\times $ scheduling. The mass is concentrated at $0$ rollbacks (no blocking diagnostic ever fires); firing problems settle within one or two retries under \textsc {NaiveLast} in both schedulings}{figure.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.6}Extended arms (post-deadline follow-up)}{15}{subsection.4.6}\protected@file@percent }
+\newlabel{sec:extended}{{4.6}{15}{Extended arms (post-deadline follow-up)}{subsection.4.6}{}}
+\@writefile{toc}{\contentsline {paragraph}{ROCODEEntropy, fully wired.}{15}{section*.23}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{LSP verification.}{15}{section*.24}\protected@file@percent }
 \citation{olausson2024selfrepair}
+\@writefile{toc}{\contentsline {paragraph}{Model-size scaling.}{16}{section*.25}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{A second benchmark: MBPP.}{16}{section*.26}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{NaiveLast+Penalty.}{16}{section*.27}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Java.}{16}{section*.28}\protected@file@percent }
 \citation{wang2025semguard}
 \citation{jiang2024rocode}
-\@writefile{toc}{\contentsline {paragraph}{A second benchmark: MBPP.}{16}{section*.25}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.7}Ablation: diagnostic classifier}{16}{subsection.4.7}\protected@file@percent }
-\newlabel{sec:results-ablation-classifier}{{4.7}{16}{Ablation: diagnostic classifier}{subsection.4.7}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.8}ROCODE-upstream baseline}{16}{subsection.4.8}\protected@file@percent }
-\newlabel{sec:results-rocode}{{4.8}{16}{ROCODE-upstream baseline}{subsection.4.8}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces Per-arm wall-time decomposed into \emph  {decode} (the vanilla-arm mean, gray) and \emph  {verifier overhead} (the residual, orange; serialized verifier wait + rollback decode). Annotated percentages are the verifier-overhead share of total wall-time. Async pushes the orange term from $76\%$ to $29\%$ on C++ and from $45\%$ to $13\%$ on Rust.}}{17}{figure.9}\protected@file@percent }
-\newlabel{fig:overhead}{{9}{17}{Per-arm wall-time decomposed into \emph {decode} (the vanilla-arm mean, gray) and \emph {verifier overhead} (the residual, orange; serialized verifier wait + rollback decode). Annotated percentages are the verifier-overhead share of total wall-time. Async pushes the orange term from $76\%$ to $29\%$ on C++ and from $45\%$ to $13\%$ on Rust}{figure.9}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.7}Ablation: diagnostic classifier}{17}{subsection.4.7}\protected@file@percent }
+\newlabel{sec:results-ablation-classifier}{{4.7}{17}{Ablation: diagnostic classifier}{subsection.4.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.8}ROCODE-upstream baseline}{17}{subsection.4.8}\protected@file@percent }
+\newlabel{sec:results-rocode}{{4.8}{17}{ROCODE-upstream baseline}{subsection.4.8}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.9}Producer-wait fraction}{17}{subsection.4.9}\protected@file@percent }
 \newlabel{sec:results-wait}{{4.9}{17}{Producer-wait fraction}{subsection.4.9}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.10}Reproducibility}{17}{subsection.4.10}\protected@file@percent }
 \newlabel{sec:repro}{{4.10}{17}{Reproducibility}{subsection.4.10}{}}
-\@writefile{toc}{\contentsline {paragraph}{Verification.}{17}{section*.26}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Replication.}{17}{section*.27}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Verification and replication.}{17}{section*.29}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Determinism caveats.}{17}{section*.30}\protected@file@percent }
 \citation{jiang2024rocode}
 \citation{olausson2024selfrepair}
 \citation{wang2025semguard}
 \citation{wang2025semguard}
+\@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces Per-arm wall-time decomposed into \emph  {decode} (the vanilla-arm mean, gray) and \emph  {verifier overhead} (the residual, orange; serialized verifier wait + rollback decode). Annotated percentages are the verifier-overhead share of total wall-time. Async pushes the orange term from $65\%$ to $25\%$ on C++ and from $33\%$ to ${\sim }1\%$ on Rust.}}{18}{figure.9}\protected@file@percent }
+\newlabel{fig:overhead}{{9}{18}{Per-arm wall-time decomposed into \emph {decode} (the vanilla-arm mean, gray) and \emph {verifier overhead} (the residual, orange; serialized verifier wait + rollback decode). Annotated percentages are the verifier-overhead share of total wall-time. Async pushes the orange term from $65\%$ to $25\%$ on C++ and from $33\%$ to ${\sim }1\%$ on Rust}{figure.9}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Conclusion}{18}{section.5}\protected@file@percent }
+\newlabel{sec:conclusion}{{5}{18}{Conclusion}{section.5}{}}
+\@writefile{toc}{\contentsline {paragraph}{Where async pays.}{18}{section*.31}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Limitations.}{18}{section*.32}\protected@file@percent }
 \citation{jain2024livecodebench}
 \citation{zhou2024lats}
 \citation{beurerkellner2024domino}
 \citation{mundler2025typeconstrained}
-\@writefile{toc}{\contentsline {paragraph}{Determinism caveats.}{18}{section*.28}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {5}Conclusion}{18}{section.5}\protected@file@percent }
-\newlabel{sec:conclusion}{{5}{18}{Conclusion}{section.5}{}}
-\@writefile{toc}{\contentsline {paragraph}{Where async pays.}{18}{section*.29}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Limitations.}{18}{section*.30}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Future work.}{18}{section*.31}\protected@file@percent }
 \citation{soundcode2025github}
 \bibstyle{plainnat}
 \bibdata{references}
@@ -217,13 +218,14 @@
 \bibcite{cassano2022multipl}{{4}{2023}{{Cassano et~al.}}{{Cassano, Gouwar, Nguyen, Nguyen, Phipps-Costin, Pinckney, Yee, Zi, Anderson, Feldman, et~al.}}}
 \bibcite{chen2023speculative}{{5}{2023}{{Chen et~al.}}{{Chen, Borgeaud, Irving, Lespiau, Sifre, and Jumper}}}
 \bibcite{chen2021humaneval}{{6}{2021}{{Chen et~al.}}{{Chen, Tworek, Jun, Yuan, Pinto, Kaplan, Edwards, Burda, Joseph, Brockman, et~al.}}}
+\@writefile{toc}{\contentsline {paragraph}{Future work.}{19}{section*.33}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Artifacts.}{19}{section*.34}\protected@file@percent }
 \bibcite{chen2024selfdebug}{{7}{2024}{{Chen et~al.}}{{Chen, Lin, Sch\"arli, and Zhou}}}
 \bibcite{fu2024lookahead}{{8}{2024}{{Fu et~al.}}{{Fu, Bailis, Stoica, and Zhang}}}
 \bibcite{geng2023gcd}{{9}{2023}{{Geng et~al.}}{{Geng, Josifoski, Peyrard, and West}}}
 \bibcite{hui2024qwen25coder}{{10}{2024}{{Hui et~al.}}{{Hui, Yang, Cui, Yang, Liu, Zhang, Liu, Zhang, Yu, Dang, et~al.}}}
 \bibcite{jain2024livecodebench}{{11}{2024}{{Jain et~al.}}{{Jain, Han, Gu, Li, Yan, Zhang, Wang, Solar-Lezama, Sen, and Stoica}}}
 \bibcite{jiang2024rocode}{{12}{2024}{{Jiang et~al.}}{{Jiang, Zheng, Lyu, Niu, Wang, Hu, and Jin}}}
-\@writefile{toc}{\contentsline {paragraph}{Artifacts.}{19}{section*.32}\protected@file@percent }
 \bibcite{vllm2023}{{13}{2023}{{Kwon et~al.}}{{Kwon, Li, Zhuang, Sheng, Zheng, Yu, Gonzalez, Zhang, and Stoica}}}
 \bibcite{leviathan2023speculative}{{14}{2023}{{Leviathan et~al.}}{{Leviathan, Kalman, and Matias}}}
 \bibcite{madaan2023selfrefine}{{15}{2023}{{Madaan et~al.}}{{Madaan, Tandon, Gupta, Hallinan, Gao, Wiegreffe, Alon, Dziri, Prabhumoye, Yang, Welleck, Majumder, Gupta, Yazdanbakhsh, and Clark}}}

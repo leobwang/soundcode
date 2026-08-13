@@ -68,7 +68,7 @@ line of code), but it forecloses the
 use of slower, sounder oracles --- \code{cargo check} on Rust
 (${\sim}35$--$500\,\mathrm{ms}$ incremental), \code{javac} on Java
 (${\sim}180\,\mathrm{ms}$), per-invocation compiler subprocesses in
-the decoding loop (${\sim}0.6\,\mathrm{s}$ amortized for
+the decoding loop (${\sim}0.55\,\mathrm{s}$ amortized for
 $g{+}{+}\;\code{-fsyntax-only}$ in our setup), or whole-crate type
 and lifetime analyses taking seconds.
 We present \emph{SoundCode}, a producer-consumer decoding loop in
@@ -84,15 +84,17 @@ benchmark.
 We evaluate Qwen2.5-Coder-7B-Instruct \citep{hui2024qwen25coder}
 on MultiPL-E HumanEval-rs and HumanEval-cpp
 \citep{cassano2022multipl}. Holding the model, the verifier, and the
-rollback algorithm fixed, SoundCode is $1.59\times$ faster on Rust
-($116/156$ paired wins) and $2.95\times$ faster on C++
+rollback algorithm fixed, SoundCode is $1.47\times$ faster on Rust
+($122/156$ paired wins; async verification costs $1.4\%$ over
+verifier-free decoding) and $2.16\times$ faster on C++
 ($159/161$ paired wins) than the synchronous ROCODE-style
-equivalent, with the ratios stable across five independent
-full-grid executions ($\pm 0.2\%$).
+equivalent, with consistent ratios on MBPP
+($1.54\times$/$2.18\times$, $n\!=\!354$/$397$) and larger ones for
+a faster-decoding 1.5B model ($1.69\times$/$3.17\times$), as a
+verifier-cost-spectrum model predicts.
 pass@1 is statistically indistinguishable between the
-two schedulings (greedy decoding, outputs identical across
-replications; McNemar exact $p\!=\!0.30$ on
-Rust, $p\!=\!0.13$ on C++), so our contribution is a pure
+two schedulings on both benchmarks (McNemar exact $p\!\geq\!0.092$
+everywhere), so our contribution is a pure
 \emph{latency} result: asynchronous scheduling removes the
 synchronous verifier's critical-path cost without measurably
 changing accuracy.

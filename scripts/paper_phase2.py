@@ -790,6 +790,21 @@ def write_draft_report(
 
 
 def main() -> None:
+    # Optional override: analyze a different results directory (e.g. the
+    # patched-runner v2 grid) without touching the historical default.
+    import argparse
+    global RESULTS_DIR, AGGREGATE_CSV, DRAFT_REPORT
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--results-dir", type=str, default=None,
+                        help="results dir (default: results/paper_phase1)")
+    parser.add_argument("--report-out", type=str, default=None,
+                        help="draft-report output path")
+    args = parser.parse_args()
+    if args.results_dir:
+        RESULTS_DIR = Path(args.results_dir).resolve()
+        AGGREGATE_CSV = RESULTS_DIR / "aggregate.csv"
+    if args.report_out:
+        DRAFT_REPORT = Path(args.report_out).resolve()
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     data = load_all()
     stats = per_arm_stats(data)

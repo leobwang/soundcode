@@ -52,10 +52,10 @@ rollback-policy ablation compares \textsc{NaiveLast} against
 (\S\ref{sec:extended}) adds the arms the original scoping cut:
 the fully-wired \textsc{ROCODEEntropy} policy (async, both
 languages), AsyncLSP plus a SyncLSP companion (rust-analyzer as
-verifier), and a matched-budget resampling baseline outside the
+verifier), all four \textsc{NaiveLast+Penalty} arms, a Java third
+language, and a matched-budget resampling baseline outside the
 original nine. Still unevaluated at this revision:
-SyncCargo\,+\,\textsc{RecBackoff}, the
-\textsc{NaiveLast+Penalty} arms, and ROCODE-upstream (skipped for
+SyncCargo\,+\,\textsc{RecBackoff} and ROCODE-upstream (skipped for
 the separate reason documented in \S\ref{sec:results-rocode}).
 
 \paragraph{Metrics.}
@@ -67,6 +67,25 @@ awaiting a verdict that already blocks decoding) for the sync arms
 and the corresponding \emph{producer wait fraction} for the async
 arms, to make the saved wall-time directly attributable to async
 overlap.
+
+\paragraph{Runner revision (v2).} During the follow-up we found a
+bug in the boundary detector's firing logic: because trailing
+whitespace hides the statement terminator, a purely-whitespace
+token chunk re-fired the boundary that had already been checked,
+re-invoking the verifier (and, in sync mode, aborting the stream)
+on the \emph{same} boundary. The tax fell asymmetrically on the
+sync arms --- async's single-in-flight-check rule absorbs
+re-fires --- inflating sync wall-times by roughly $24\%$ on Rust
+and $46\%$ on C++
+and overstating the async advantage. All numbers in this revision
+come from the corrected runner (v2). Removing the spurious aborts
+also shifts a modest number of per-problem outcomes through
+altered rollback interactions (most visibly sync-C++, where 14
+test outcomes change and pass@1 rises from $71.4\%$ to $75.2\%$).
+For the record, the
+uncorrected runner measured $1.59\times$ (Rust) and $2.95\times$
+(C++); the corrected headline below is $1.47\times$ and
+$2.16\times$. Both raw datasets are committed.
 
 \subsection{Main results}\label{sec:main-results}
 
@@ -92,15 +111,15 @@ pass@1 or compile rate over \textsf{Vanilla} (see
 \toprule
 Arm & Lang & Sched. & Rollback & $n$ & pass@1 & comp. & mean wall & median & mean rb & mean toks \\
 \midrule
-Vanilla            & Rust & plain  & --      & 156 & 69.9\% & 86.5\% & 0.713          & 0.627          & --   & 70.3 \\
-SyncCargo Naive    & Rust & sync   & naive   & 156 & 72.4\% & 89.7\% & 1.300          & 1.194          & 0.69 & 74.8 \\
-AsyncCargo Naive   & Rust & async  & naive   & 156 & 69.2\% & 86.5\% & \textbf{0.819} & \textbf{0.683} & 0.98 & 69.8 \\
-AsyncCargo RecBackoff & Rust & async  & recb & 156 & 66.0\% & 81.4\% & 0.948          & 0.683          & 0.99 & 70.5 \\
+Vanilla            & Rust & plain  & --      & 156 & 69.9\% & 86.5\% & 0.704          & 0.619          & --   & 70.3 \\
+SyncCargo Naive    & Rust & sync   & naive   & 156 & 73.7\% & 87.8\% & 1.051          & 0.942          & 0.17 & 69.7 \\
+AsyncCargo Naive   & Rust & async  & naive   & 156 & 69.2\% & 85.9\% & \textbf{0.714} & \textbf{0.630} & 0.17 & 69.7 \\
+AsyncCargo RecBackoff & Rust & async  & recb & 156 & 66.0\% & 80.8\% & 0.892          & 0.654          & 0.74 & 70.1 \\
 \midrule
-Vanilla            & C++  & plain  & --      & 161 & 77.0\% & 96.3\% & 0.877          & 0.781          & --   & 86.5 \\
-SyncCargo Naive    & C++  & sync   & naive   & 161 & 71.4\% & 88.8\% & 3.645          & 3.137          & 0.27 & 100.2 \\
-AsyncCargo Naive   & C++  & async  & naive   & 161 & 76.4\% & 95.7\% & \textbf{1.235} & \textbf{1.098} & 0.22 & 86.2 \\
-AsyncCargo RecBackoff & C++  & async  & recb & 161 & 76.4\% & 96.3\% & 1.282          & 1.100          & 0.26 & 86.5 \\
+Vanilla            & C++  & plain  & --      & 161 & 77.0\% & 96.3\% & 0.865          & 0.770          & --   & 86.5 \\
+SyncCargo Naive    & C++  & sync   & naive   & 161 & 75.2\% & 93.2\% & 2.495          & 2.411          & 0.07 & 87.2 \\
+AsyncCargo Naive   & C++  & async  & naive   & 161 & 77.0\% & 96.9\% & \textbf{1.156} & \textbf{1.091} & 0.06 & 86.2 \\
+AsyncCargo RecBackoff & C++  & async  & recb & 161 & 76.4\% & 96.3\% & 1.271          & 1.089          & 0.26 & 86.3 \\
 \bottomrule
 \end{tabular}
 \\[2pt]
@@ -121,7 +140,7 @@ and the same verifier.}
     they differ only in scheduling. The annotated speedups are the
     ratio of means $\overline{t}_{\text{sync}} /
     \overline{t}_{\text{async}}$ for the naive-rollback pair in
-    each language: $1.59\times$ on Rust, $2.95\times$ on C++.
+    each language: $1.47\times$ on Rust, $2.16\times$ on C++.
     Plain (gray) is the verifier-free baseline.}
   \label{fig:walltime-bars}
 \end{figure}
@@ -137,54 +156,49 @@ generation per problem per arm ($T\!=\!0$, one seed), so we report
 paired-difference significance rather than across-run variance.
 By McNemar's exact test on paired problems, the headline
 sync-vs-async comparison at matched \textsc{NaiveLast} policy shows
-\emph{no} significant pass@1 difference on either language (Rust:
-$10$ vs $5$ discordant, $p\!=\!0.30$; C++: $7$ vs $15$,
-$p\!=\!0.13$), and no verified arm differs significantly from
-\textsf{Vanilla} on pass@1. The significant pairwise effects in the
-data uniformly \emph{disfavor} the sync and \textsc{RecBackoff}
-arms: on
-compile rate, \textsf{SyncCargo}-C++ compiles less often than both
-\textsf{Vanilla} ($p\!=\!0.004$) and \textsf{AsyncCargo}
-($p\!=\!0.007$), and the \textsc{RecBackoff} arm on Rust compiles
-less often
-than \textsf{Vanilla} ($p\!=\!0.02$), \textsf{SyncCargo}
-($p\!=\!0.001$), and naive-async ($p\!=\!0.008$); on pass@1, the
-\textsc{RecBackoff} arm trails \textsf{SyncCargo} on Rust
-($p\!=\!0.04$). None
+no significant pass@1 difference on either language (Rust:
+$3$ vs $10$ discordant, $p\!=\!0.092$, direction favoring sync;
+C++: $8$ vs $5$, $p\!=\!0.58$), and no verified arm differs
+significantly from \textsf{Vanilla} on pass@1 (closest:
+\textsf{SyncCargo}-Rust at $+6$ problems, $p\!=\!0.15$, and
+\textsc{RecBackoff}-Rust at $-6$, $p\!=\!0.070$). The only
+significant pairwise effects in the grid disfavor
+\textsc{RecBackoff} on Rust compile rate (vs \textsf{Vanilla}
+$1$~vs~$10$, $p\!=\!0.012$; vs naive-async $1$~vs~$9$,
+$p\!=\!0.022$). None
 of these effects favors verification over plain decoding.
 Accordingly, this paper claims a \emph{latency} improvement only:
 the wall-time gaps in Table~\ref{tab:main} are large, consistent
-across mean, median, and p90 (p90: $2.38$\,s sync vs $1.51$\,s
-async on Rust; $4.98$\,s vs $1.81$\,s on C++), hold on
-$74$--$99\%$ of individual paired problems, and are stable across
-five independent full-grid executions ($1.587 \pm 0.0005$ Rust,
-$2.960 \pm 0.006$ C++; \S\ref{sec:repro}).
+across mean, median, and p90 (p90: $1.97$\,s sync vs $1.14$\,s
+async on Rust; $3.72$\,s vs $1.72$\,s on C++), and hold on
+$78$--$99\%$ of individual paired problems; the pipeline's
+run-to-run stability is characterized in \S\ref{sec:repro}.
 
 \subsection{Headline finding}\label{sec:headline}
 
 \paragraph{C++.} Switching the same rollback algorithm from sync to
-async cuts mean per-problem wall-time from $3.65$\,s to $1.23$\,s
-($2.95\times$ speedup at the means; $2.84\times$ at the per-problem
+async cuts mean per-problem wall-time from $2.50$\,s to $1.16$\,s
+($2.16\times$ speedup at the means; $2.20\times$ at the per-problem
 median). On $98.8\%$ of paired problems (159 of 161), async is
 strictly faster than sync on the same problem
-(Figure~\ref{fig:speedup-scatter}). pass@1 is $76.4\%$ async vs
-$71.4\%$ sync, but this $+5.0$\,pp difference is not statistically
-significant on a single greedy run (McNemar exact test on the paired
-problems, $15$ vs $7$ discordant, $p\!=\!0.13$), and we do not claim
-it as an accuracy effect. The async arm does generate fewer tokens
-(86.2 per problem vs sync's 100.2, comparable to vanilla's 86.5),
-which is consistent with sync's mid-decode aborts truncating the
-model's plan more aggressively than the async consumer does.
+(Figure~\ref{fig:speedup-scatter}). pass@1 is $77.0\%$ async vs
+$75.2\%$ sync, a difference of a handful of problems that is not
+statistically significant (McNemar exact test on the paired
+problems, $8$ vs $5$ discordant, $p\!=\!0.58$), and we do not claim
+it as an accuracy effect.
 
-\paragraph{Rust.} The wall-time win on Rust is $1.59\times$
-($1.30$\,s sync to $0.82$\,s async; $1.48\times$ at the per-problem
-median). Async beats sync on $74.4\%$ of paired problems. pass@1 is
-$72.4\%$ sync vs $69.2\%$ async; as on C++, the difference is not
-statistically significant ($10$ vs $5$ discordant, McNemar exact
-$p\!=\!0.30$). The smaller wall-time gain is exactly the
+\paragraph{Rust.} The wall-time win on Rust is $1.47\times$
+($1.05$\,s sync to $0.71$\,s async; $1.31\times$ at the per-problem
+median), and the async arm's overhead over vanilla decoding is just
+$1.4\%$ ($0.714$\,s vs $0.704$\,s) --- on Rust, verification is
+essentially free under async scheduling. Async beats sync on
+$78.2\%$ of paired problems ($122/156$). pass@1 is
+$73.7\%$ sync vs $69.2\%$ async; as on C++, the difference is not
+statistically significant ($3$ vs $10$ discordant, McNemar exact
+$p\!=\!0.092$). The smaller wall-time gain is exactly the
 verifier-cost-spectrum prediction of \S\ref{sec:when-async}:
 incremental \code{cargo check} on the warm workspace amortizes to
-$\sim$\,$0.18$\,s per call in our setup
+$\sim$\,$0.20$\,s per call in our setup
 (\S\ref{sec:headline-contrast}) --- roughly a third of C++'s
 per-check cost --- so the sync arm's per-boundary stall is shorter,
 leaving less wall-time for the async overlap to recover.
@@ -203,7 +217,7 @@ leaving less wall-time for the async overlap to recover.
 
 \subsection{Rust vs.\ C++: the verifier-cost spectrum}\label{sec:headline-contrast}
 
-The asymmetry $2.95\times$ (C++) vs $1.59\times$ (Rust) is
+The asymmetry $2.16\times$ (C++) vs $1.47\times$ (Rust) is
 predicted by the cost-spectrum analysis of
 \S\ref{sec:when-async}: the relative async win scales with the ratio
 $c_v / c_d$ of verifier cost $c_v$ to per-token decode cost $c_d$.
@@ -214,14 +228,15 @@ $\overline{t}_{\text{sync}} \approx
 of boundary checks per problem. The async arm pushes the
 $c_v K$ term off the critical path entirely, so its wall-time
 asymptotically returns to $\overline{t}_{\text{plain}}$. Empirically,
-this matches the data on C++: plain C++ is $0.88$\,s and async-C++
-is $1.23$\,s (a 40\% overhead from rollback + lingering tail), while
-sync-C++ is $3.65$\,s, dominated by $K \approx 4.7$ \code{g++}
-syntax-only invocations at $\sim$\,$0.6$\,s amortized cost each (the
+this matches the data on C++: plain C++ is $0.87$\,s and async-C++
+is $1.16$\,s (a 34\% overhead from rollback + the end-of-stream
+drain), while
+sync-C++ is $2.50$\,s, dominated by $K \approx 3.0$ \code{g++}
+syntax-only invocations at $\sim$\,$0.55$\,s amortized cost each (the
 cold-start time of the C++ compiler is large relative to anything
-\code{cargo check} pays). On Rust, plain is $0.71$\,s and async-Rust
-is $0.82$\,s (a 15\% overhead); the sync overhead is only
-$\sim$\,$0.6$\,s ($K \approx 3.2$ checks at $\sim$\,$0.18$\,s
+\code{cargo check} pays). On Rust, plain is $0.70$\,s and async-Rust
+is $0.71$\,s (a 1.4\% overhead); the sync overhead is
+$\sim$\,$0.35$\,s ($K \approx 1.8$ checks at $\sim$\,$0.20$\,s
 amortized incremental \code{cargo check}). Figure~\ref{fig:overhead}
 visualizes this decomposition.
 
@@ -232,34 +247,32 @@ Within the AsyncCargo arms, the recurrence-gated back-off
 \emph{not} improve over the simpler \textsc{NaiveLast} policy on
 this benchmark: on Rust, \textsc{RecBackoff} is $66.0\%$ pass@1 vs
 naive
-$69.2\%$ (and compiles significantly less often, $p\!=\!0.008$); on
-C++, it ties naive at $76.4\%$. Rollback is rare overall ---
-$132$ of $156$ Rust problems and $155$ of $161$ C++ problems never
-roll back under AsyncCargo-Naive ($0.98$ and $0.22$ mean
-rollbacks/problem; Figure~\ref{fig:rollback-dist}) --- but on the
-minority of problems where rollback fires at all, it typically
-recurs until the per-problem rollback budget is exhausted: the
-median among firing problems is $7$ rollbacks, which is also the
-budget maximum. In other words, the problems that roll back are
-mostly problems that rollback fails to rescue, under \emph{either}
-target-selection policy. The clean read is that the simpler policy
-suffices on this benchmark: most problems never exercise the policy
-at all, and on the recurrence-heavy minority the back-off target
-fails alongside the naive one. We reiterate the scoping note from
-\S\ref{sec:setup}: this ablation tests ROCODE's recurrence
-\emph{gate}, not its entropy-based target selection, which was not
-evaluated.
+$69.2\%$ (and compiles significantly less often: $126$ vs $134$,
+$p\!=\!0.022$); on
+C++, it is $76.4\%$ vs naive's $77.0\%$. Rollback is rare overall
+--- $132$ of $156$ Rust problems and $155$ of $161$ C++ problems
+never roll back under AsyncCargo-Naive ($0.17$ and $0.06$ mean
+rollbacks/problem; Figure~\ref{fig:rollback-dist}) --- and the two
+policies diverge sharply on the firing minority: under
+\textsc{NaiveLast} a firing problem rolls back once or twice
+(median $1$, max $2$) and settles, while under \textsc{RecBackoff}
+the extra back-off re-encounters errors and typically thrashes to
+the per-problem rollback budget (median $7$ among firing problems,
+the budget maximum). The clean read is that the simpler policy
+suffices on this benchmark: most problems never exercise the
+policy at all, and the more aggressive target actively harms the
+minority that do. The same conclusion holds for ROCODE's full
+entropy-based target selection, evaluated in
+\S\ref{sec:extended}.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=0.85\linewidth]{figures/plot_rollback_dist.pdf}
   \caption{Distribution of rollback counts per problem, faceted by
     language $\times$ scheduling. The mass is concentrated at $0$
-    rollbacks (no blocking diagnostic ever fires) and a long thin
-    tail at $\geq 2$. The async arms incur slightly \emph{more}
-    rollbacks on Rust (the consumer drains a verdict on a buffer
-    that has continued to grow), but those rollbacks are cheaper
-    than the sync boundary stalls they replace.}
+    rollbacks (no blocking diagnostic ever fires); firing problems
+    settle within one or two retries under \textsc{NaiveLast} in
+    both schedulings.}
   \label{fig:rollback-dist}
 \end{figure}
 
@@ -275,17 +288,18 @@ entropies from the top-20 logprobs, error-line offset $r_e$ on the
 first rollback for an error, max-entropy line $r_h$ on recurrence
 --- and re-ran the async arms. The verdict from the
 \textsc{RecBackoff} proxy stands. On C++, the wired rule ties
-\textsc{NaiveLast} and \textsc{RecBackoff} exactly ($123/161$
-pass@1; all pairwise McNemar $p\!=\!1.0$). On Rust it scores
-$66.0\%$ ($103/156$) --- identical to \textsc{RecBackoff}
-($1$~vs~$1$ discordant, $p\!=\!1.0$), non-significantly below
-\textsc{NaiveLast} on pass@1 ($p\!=\!0.13$), significantly below
-it on compile rate ($1$~vs~$10$, $p\!=\!0.012$), and significantly
+\textsc{RecBackoff} ($123/161$ pass@1) one problem below
+\textsc{NaiveLast} ($124$). On Rust it scores
+$66.0\%$ ($103/156$) --- identical to \textsc{RecBackoff},
+non-significantly below
+\textsc{NaiveLast} on pass@1 ($1$~vs~$6$, $p\!=\!0.13$),
+significantly below
+it on compile rate ($1$~vs~$9$, $p\!=\!0.022$), and significantly
 below \textsf{Vanilla} on pass@1 ($0$~vs~$6$, $p\!=\!0.031$).
 Entropy-targeted rollback does not rescue the recurrence-heavy
 minority on this benchmark; it only relocates the rollback target
 inside problems that fail under every policy. (The wired arm's
-wall-times, $1.23$\,s Rust / $1.41$\,s C++, are not comparable to
+wall-times, $1.23$\,s Rust / $1.39$\,s C++, are not comparable to
 Table~\ref{tab:main}: computing top-20 logprobs slows decoding for
 every token.)
 
@@ -293,8 +307,8 @@ every token.)
 driver (below), we ran the AsyncLSP arm --- and a SyncLSP
 companion --- on Rust. Three results. \emph{First, the LSP tier is
 not vestigial once the driver is correct}: blocking diagnostics
-fire and roll back ($36$ rollbacks across $6$ problems async;
-$40$ across $10$ sync), in contrast to earlier project experiments
+fire and roll back ($6$ rollbacks across $6$ problems async;
+$15$ across $13$ sync), in contrast to earlier project experiments
 in which the LSP tier never blocked. Much of that earlier null
 result traces to a driver bug rather than to rust-analyzer itself:
 the shipped multilspy-based checker never delivered content
@@ -302,19 +316,21 @@ updates the server acted on (rust-analyzer computes rustc-class
 diagnostics via its embedded \code{cargo check} only on
 \code{didSave}, which the driver never sent), so every check after
 the first returned the first check's diagnostics. \emph{Second},
-accuracy matches the compiler arms: async-LSP passes $108/156$
-(the same count as async-cargo, differing on two problems; vs
+accuracy tracks the compiler arms exactly: async-LSP passes
+$108/156$ (async-cargo's count; vs
 \textsf{Vanilla} $p\!=\!1.0$),
-sync-LSP $114/156$ (vs \textsf{Vanilla} $p\!=\!0.30$).
+sync-LSP $115/156$ (sync-cargo's count; vs \textsf{Vanilla}
+$p\!=\!0.15$).
 \emph{Third}, the sync-vs-async contrast reproduces at LSP-grade
-verifier cost: $4.34$\,s sync vs $2.55$\,s async at the means
-($1.70\times$; async faster on $136/156$ paired problems, median
-per-problem ratio $1.49\times$). Two honest caveats. LSP
+verifier cost: $3.52$\,s sync vs $2.46$\,s async at the means
+($1.43\times$; async faster on $128/156$ paired problems, median
+per-problem ratio $1.33\times$). Two honest caveats. LSP
 verification is strictly dominated by \code{cargo check} here ---
-same pass@1 at ${\sim}3\times$ async-cargo's wall-time
-($2.55$\,s vs $0.82$\,s) --- and the $1.70\times$ ratio sits
-\emph{below} C++'s $2.95\times$ despite the costlier per-check
-verifier, which refines the cost-spectrum model of
+same pass@1 at $3.4\times$ async-cargo's wall-time
+($2.46$\,s vs $0.71$\,s) --- and the $1.43\times$ ratio sits
+\emph{below} even Rust-cargo's $1.47\times$ despite a per-check
+cost roughly ten times higher, which refines the cost-spectrum
+model of
 \S\ref{sec:when-async}: once a single check ($\sim$$1$--$2$\,s)
 approaches the total decode time, the final end-of-stream verdict
 --- which async must await for correctness --- cannot be hidden,
@@ -329,16 +345,17 @@ win grows with the ratio of per-check verifier cost to decode
 cost, so a smaller, faster-decoding model should show a
 \emph{larger} win at the same verifier. We re-ran the four core
 arms with Qwen2.5-Coder-1.5B-Instruct (vanilla decode:
-$0.20$\,s/problem Rust, $0.23$\,s C++ --- $3.5\times$ faster than
+$0.20$\,s/problem Rust, $0.23$\,s C++ --- $3.6$--$3.8\times$
+faster than
 the 7B). The prediction holds on both languages: the sync/async
-ratio rises from $1.59\times$ to $1.69\times$ on Rust (async
-faster on $126/156$ paired problems) and from $2.95\times$ to
+ratio rises from $1.47\times$ to $1.69\times$ on Rust (async
+faster on $126/156$ paired problems) and from $2.16\times$ to
 $3.17\times$ on C++ ($159/161$), with pass@1 again statistically
 indistinguishable between schedulings (McNemar $p\!=\!0.27$ Rust,
-$p\!=\!1.0$ C++). Together with the LSP arm, the spectrum now has
-five measured points, ordered exactly as per-check-cost relative
-to decode time predicts --- and capped by the saturation regime
-above.
+$p\!=\!1.0$ C++). (The 1.5B grid ran on the corrected runner; its
+ratios are directly comparable to the v2 headline.) The spectrum's
+measured points are ordered exactly as per-check-cost relative
+to decode time predicts.
 
 \paragraph{A second benchmark: MBPP.} HumanEval's $n$ leaves
 $\pm$$7$\,pp confidence intervals on pass@1; MultiPL-E's MBPP
@@ -363,24 +380,60 @@ selection. On Rust it is the strongest arm in this paper:
 $120/156$ pass@1 ($76.9\%$) at $1.12$\,s mean wall and $1.39$
 samples per problem --- significantly above async in-loop
 verification on both pass@1 ($20$~vs~$8$ discordant,
-$p\!=\!0.036$) and compile rate ($155/156$; $20$~vs~$0$,
+$p\!=\!0.036$) and compile rate ($155/156$; $21$~vs~$0$,
 $p\!<\!0.001$), and above \textsf{Vanilla} on pass@1 at the edge
-of significance ($p\!=\!0.052$). On C++ it ties on pass@1
-($120/161$ vs async's $123$, $p\!=\!0.68$; vs \textsf{Vanilla}
-$p\!=\!0.54$) while still beating async in-loop verification on
-compile rate ($160/161$; $6$~vs~$0$ discordant, $p\!=\!0.031$;
-the same contrast vs \textsf{Vanilla} is $5$~vs~$0$,
-$p\!=\!0.063$) at higher wall ($1.87$\,s vs $1.23$\,s). Two
+of significance ($p\!=\!0.052$). On C++ it trails on pass@1
+within noise ($120/161$ vs async's $124$, $p\!=\!0.52$; vs
+\textsf{Vanilla}
+$p\!=\!0.54$) with a compile rate of $160/161$ (vs async
+$4$~vs~$0$ discordant, $p\!=\!0.13$) at higher wall
+($1.87$\,s vs $1.16$\,s). Two
 qualifications: the baseline decodes at $T\!=\!0.8$ while the
 verified arms are greedy, so this is a system-level comparison,
 not a one-variable ablation; and it emits $1.4$--$1.5\times$ the
 tokens (whole candidates are discarded, not suffixes). The honest
-synthesis: \emph{for batch pass@1 on HumanEval-class problems,
-resample-and-filter is the stronger default}, and the case for
+synthesis: \emph{for batch pass@1 on this benchmark,
+resample-and-filter is the stronger default on Rust and
+competitive on C++}, and the case for
 in-loop verification rests on what resampling cannot provide ---
 a monotonically growing verified prefix (streaming/interactive
 use), bounded per-problem tail latency, and the larger salvage
 value of long generations, none of which this benchmark measures.
+
+\paragraph{NaiveLast+Penalty.} We completed the last policy in the
+design space by implementing ROCODE's $\lambda^{t-r}$ token
+penalty as an engine-registered per-request logits processor
+(vLLM V1's subprocess architecture rules out the shared-state
+processor the original implementation attempted; the penalty trie
+is serialized into each retry request instead). The result is a
+null: against the corrected \textsc{NaiveLast} baselines, the
+penalty changes pass@1 by at most one problem in any arm (all
+McNemar $p\!=\!1.0$; e.g.\ async-Rust $109$ vs $108$, async-C++
+$124$ vs $124$) at indistinguishable wall-times. With rollback
+firing on ${\sim}4$--$15\%$ of problems and settling within one or
+two retries, the mask simply has almost nothing to steer. We note
+this expressly because an earlier uncontrolled comparison
+(penalty on the corrected runner vs naive on the uncorrected one)
+made the penalty look transformative; against the matched baseline
+the effect disappears.
+
+\paragraph{Java.} A third language probes the
+$\code{javac}$-grade region of the cost spectrum
+(MultiPL-E humaneval-java, $n\!=\!158$; \code{javac} in-loop
+amortizing to ${\sim}0.2$\,s per invocation). Async verification behaves as
+on Rust and C++: $107/158$ pass vs vanilla's $108$, at $0.83$\,s
+vs $0.67$\,s mean wall ($+24\%$). The sync arm, however, degrades
+outright ($86/158$ pass, $107/158$ compile): its per-boundary
+abort-and-restart cycle drifts the model's indentation, nested
+closing braces land at the four-space indent level, and
+MultiPL-E's indentation-sensitive stop token (\code{\textbackslash
+n\ \ \ \ \}}) then truncates the function mid-body --- an artifact
+of restart-based scheduling interacting with stop-token
+conventions, not of verification. We therefore do not quote a
+sync/async ratio for Java; the honest Java result is that
+\emph{async verification is accuracy-neutral at modest overhead
+where sync scheduling is not even well-defined under the
+benchmark's stop-token convention}.
 
 \subsection{Ablation: diagnostic classifier}\label{sec:results-ablation-classifier}
 
@@ -426,8 +479,8 @@ Figure~\ref{fig:overhead} decomposes each arm's mean wall-time into
 a \emph{decode} term (estimated as the corresponding vanilla-arm
 mean) and a \emph{verifier-overhead} term (the residual, including
 all serialized verifier wait and rollback wall-time). On C++, the
-verifier-overhead share is $76\%$ of sync wall-time and drops to
-$29\%$ for async; on Rust, $45\%$ shrinks to $13\%$. The async
+verifier-overhead share is $65\%$ of sync wall-time and drops to
+$25\%$ for async; on Rust, $33\%$ shrinks to $1.4\%$. The async
 verifier-overhead is non-zero because (i) the producer must still
 await the final verifier verdict before emitting the EOS token (the
 correctness invariant of \S\ref{sec:arch}), and (ii) any actual
@@ -441,7 +494,8 @@ blocking rollback incurs the discarded suffix's decode time.
     (the residual, orange; serialized verifier wait + rollback
     decode). Annotated percentages are the verifier-overhead
     share of total wall-time. Async pushes the orange term from
-    $76\%$ to $29\%$ on C++ and from $45\%$ to $13\%$ on Rust.}
+    $65\%$ to $25\%$ on C++ and from $33\%$ to ${\sim}1\%$ on
+    Rust.}
   \label{fig:overhead}
 \end{figure}
 
@@ -460,28 +514,19 @@ in ${\sim}40$ minutes on the hardware of \S\ref{sec:setup}
 (\code{uv run python scripts/paper\_phase1.py}, then
 \code{scripts/paper\_phase2.py} for aggregates and figures).
 
-\paragraph{Verification.} We re-executed all eight arms on the
-first 20 problems per language and compared against the stored
-records: per-problem compile, test-pass, and token-count outcomes
-matched exactly on $160/160$ problem-runs, rollback counts were
-identical, per-arm mean wall-times agreed within $3\%$, and the
-sync/async wall-time ratios on the subset reproduced ($1.47\times$
-re-run vs $1.47\times$ stored on Rust; $3.30\times$ vs
-$3.33\times$ on C++). The analysis pipeline is deterministic:
-re-running it regenerates the aggregate CSV and report
-byte-identically and all six figures content-identically.
-
-\paragraph{Replication.} We additionally re-ran the \emph{full}
-grid four more times on the same hardware ($5$ independent
-executions in total, including the original). The headline
-sync/async ratio-of-means is $1.587 \pm 0.0005$ on Rust and
-$2.960 \pm 0.006$ on C++ (mean $\pm$ sd across the five runs);
-per-arm mean wall-times vary by under $1\%$ (e.g.\ sync-C++
-$3.645 \pm 0.015$\,s, async-C++ $1.232 \pm 0.006$\,s). Every
-arm's per-problem compile and test-pass outcomes --- including the
-async arms', which are race-dependent in principle --- were
-identical across all five runs. The raw records of all
-replications are committed alongside the original.
+\paragraph{Verification and replication.} The pipeline's
+repeatability was established on the original (uncorrected) runner
+before the v2 revision: a 20-problem-per-language re-execution of
+all eight arms matched the stored records exactly on $160/160$
+per-problem compile/test/token outcomes with per-arm mean
+wall-times within $3\%$, and five independent full-grid executions
+agreed to $\pm 0.03\%$ (Rust) and $\pm 0.2\%$ (C++) on the
+headline ratio with per-problem outcomes identical across all
+five runs --- including the async arms', which are race-dependent
+in principle. Raw records of every run, v1 and v2, are committed.
+The analysis pipeline is deterministic: re-running it regenerates
+the aggregate CSV and report byte-identically and all figures
+content-identically.
 
 \paragraph{Determinism caveats.} Plain and sync arms are
 token-level deterministic up to vLLM prefix-caching numerics

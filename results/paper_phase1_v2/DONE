@@ -1,0 +1,14 @@
+{
+  "finished_at": 1786606421.4238431,
+  "arms_run": [
+    "plain_rust",
+    "plain_cpp",
+    "sync_naive_rust",
+    "async_naive_rust",
+    "sync_naive_cpp",
+    "async_naive_cpp",
+    "async_entropy_rust",
+    "async_entropy_cpp",
+    "rocode_upstream_cpp"
+  ]
+}

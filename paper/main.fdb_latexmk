@@ -1,13 +1,13 @@
 # Fdb version 4
-["bibtex main"] 1786601491.1507 "main.aux" "main.bbl" "main" 1786601491.7086 0
+["bibtex main"] 1786609277.57345 "main.aux" "main.bbl" "main" 1786609278.15081 0
   "./references.bib" 1779695213.77371 11241 43de068a79d2532b3360dc5a27036902 ""
   "/usr/share/texlive/texmf-dist/bibtex/bst/natbib/plainnat.bst" 1233624470 26816 ffe5423d2019860bad9f54bc402fac15 ""
-  "main.aux" 1786601491.56215 26020 ab66bf7275e379cb8add0b44b5d50c91 "pdflatex"
+  "main.aux" 1786609278.00776 25962 1338b7d8d30d6bed1298eb727799c945 "pdflatex"
   (generated)
   "main.bbl"
   "main.blg"
   (rewritten before read)
-["pdflatex"] 1786601491.1946 "main.tex" "main.pdf" "main" 1786601491.70875 0
+["pdflatex"] 1786609277.61993 "main.tex" "main.pdf" "main" 1786609278.15095 0
   "/etc/texmf/web2c/texmf.cnf" 1768600000.48717 475 c0e671620eb5563b2130f56340a5fde8 ""
   "/usr/share/texlive/texmf-dist/fonts/enc/dvips/base/8r.enc" 1165713224 4850 80dc9bab7f31fb78a000ccfed0e27cab ""
   "/usr/share/texlive/texmf-dist/fonts/map/fontname/texfonts.map" 1577235249 3524 cb3e574dea2d1052e39280babc910dc8 ""
@@ -166,23 +166,23 @@
   "/var/lib/texmf/web2c/pdftex/pdflatex.fmt" 1768600083 8213794 43135487cda34422ed735020823ebcd8 ""
   "figures/architecture.pdf" 1779695316.37045 56020 d4848dcdf91611488b42393265fd5503 ""
   "figures/mgd_workflow.pdf" 1779695315.10345 78061 888aeaa12bf875fe41cf0097095ced4b ""
-  "figures/plot_overhead_share.pdf" 1779698901.564 17120 70ec49f8982c3e1b551d2c0affb9536a ""
-  "figures/plot_rollback_dist.pdf" 1779698901.35208 14074 3c059db981d81f502f5a6174f76969c2 ""
-  "figures/plot_speedup_scatter.pdf" 1779698901.50772 20563 a80b8228b66c375513b4e9126a36e59b ""
-  "figures/plot_walltime_bars.pdf" 1779698901.05698 18200 74dc8af79c91e81962a18701bb1e4d7f ""
+  "figures/plot_overhead_share.pdf" 1786608659.08601 16575 d28230b6d38b5e1eb7d44c82c4882ba5 ""
+  "figures/plot_rollback_dist.pdf" 1786608658.88139 13588 be96617bb26f5b19a1fca6da2a641d57 ""
+  "figures/plot_speedup_scatter.pdf" 1786608659.02913 20252 d1548a95bcedf7c0859a1aa2b98cc2d8 ""
+  "figures/plot_walltime_bars.pdf" 1786608658.59194 18706 67846b0750b3af47cf7391ed3e82991e ""
   "figures/rocode_workflow.pdf" 1779695315.35845 104955 7c2b2cc4d1aaf53302c5e8915b072a82 ""
   "figures/semguard_workflow.pdf" 1779695315.60645 93732 0918110022bed33d3feafa5415eadb15 ""
   "figures/soundcode_workflow.pdf" 1779695315.87645 118478 7b65ed0782f487e91bacee8242960b5d ""
-  "main.aux" 1786601491.56215 26020 ab66bf7275e379cb8add0b44b5d50c91 "pdflatex"
-  "main.bbl" 1786601491.1929 10971 838d19193e880c3b4098689a6c4b9b2d "bibtex main"
-  "main.out" 1786601491.56215 4720 8d212d1e6d95b6be69450d585dc0fa56 "pdflatex"
-  "main.tex" 1786590804.91587 4506 1cb7650e55f73c8eac431df60f83c105 ""
+  "main.aux" 1786609278.00776 25962 1338b7d8d30d6bed1298eb727799c945 "pdflatex"
+  "main.bbl" 1786609277.61741 10971 838d19193e880c3b4098689a6c4b9b2d "bibtex main"
+  "main.out" 1786609278.00876 4720 8d212d1e6d95b6be69450d585dc0fa56 "pdflatex"
+  "main.tex" 1786609233.14069 4635 6d5c6d7914cd5fefd9873a0ad0daead6 ""
   "neurips_2024.sty" 1779694827.04325 11625 b5f853b54a7a098e9e5b837f826d5daa ""
-  "sections/conclusion.tex" 1786597164.88994 5867 70d9772570af465c91b02e90b95d961a ""
-  "sections/intro.tex" 1786597765.2707 10534 c148f40779b4c428e22fa649deccb0d1 ""
-  "sections/method.tex" 1786596804.63036 18836 98eb40e50757f9d143c0a3550f8e52e9 ""
+  "sections/conclusion.tex" 1786608227.80071 5964 911656c1f0150574e2f503fc839fb280 ""
+  "sections/intro.tex" 1786609259.96776 10699 f8f0596b453c22fc9f067a8bb38d761a ""
+  "sections/method.tex" 1786609242.72456 18822 cec03a10249e141296514fb5ceb82e6f ""
   "sections/related_work.tex" 1786483376.00494 11616 5a6f028f05cdba916c9a90b41bb15fd5 ""
-  "sections/results.tex" 1786601485.74319 26597 295aa82e07affb03a81ed9f00461f7f2 ""
+  "sections/results.tex" 1786609262.32715 28575 f905c3e7637ab169b02efebbc7db37eb ""
   (generated)
   "main.aux"
   "main.log"
