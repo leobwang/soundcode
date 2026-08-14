@@ -1,0 +1,13 @@
+{
+  "strategy": "B_more_graphs",
+  "status": "ok",
+  "warmup_s": 98.52503153699217,
+  "ttft_s": 0.889629789016908,
+  "gen_s": 2.70419432799099,
+  "gen_tokens": 200,
+  "decode_tps": 109.66818524543115,
+  "total_tps": 73.95918182721162,
+  "vram_after_load_mib": 82010,
+  "vram_peak_mib": 82010,
+  "text_preview": "\n    if n <= 0:\n        return 0\n    elif n == 1:\n        return 1\n    else:\n        return fibonacci(n-1) + fibonacci(n"
+}

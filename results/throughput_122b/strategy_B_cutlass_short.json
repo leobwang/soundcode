@@ -1,0 +1,13 @@
+{
+  "strategy": "B_cutlass_graphs",
+  "status": "ok",
+  "warmup_s": 51.975824402994476,
+  "ttft_s": 0.1609849039814435,
+  "gen_s": 2.3907271930074785,
+  "gen_tokens": 200,
+  "decode_tps": 89.24798214547225,
+  "total_tps": 83.656554618599,
+  "vram_after_load_mib": 82008,
+  "vram_peak_mib": 82008,
+  "text_preview": "\n    if n <= 0:\n        return 0\n    elif n == 1:\n        return 1\n    else:\n        return fibonacci(n-1) + fibonacci(n"
+}

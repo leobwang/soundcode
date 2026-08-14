@@ -1,0 +1,13 @@
+{
+  "strategy": "B_cutlass_graphs",
+  "status": "ok",
+  "warmup_s": 42.741040524007985,
+  "ttft_s": 0.16291396101587452,
+  "gen_s": 2.3909253629972227,
+  "gen_tokens": 200,
+  "decode_tps": 89.31731669911173,
+  "total_tps": 83.64962081011322,
+  "vram_after_load_mib": 82008,
+  "vram_peak_mib": 82012,
+  "text_preview": " def __init__(self, capacity: int = 1000, ttl_seconds: int = 300):\n         self.capacity = capacity\n         self.ttl_s"
+}

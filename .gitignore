@@ -3,3 +3,37 @@ __pycache__/
 *.pyo
 *.egg-info/
 .pytest_cache/
+
+# ── LaTeX build artifacts (final PDFs and paper/main.bbl stay tracked) ──
+*.aux
+*.blg
+*.out
+*.fls
+*.fdb_latexmk
+blog/*.log
+proposal/*.log
+proposal-v2/*.log
+paper/main.log
+proposal/*.bbl
+proposal-v2/*.bbl
+
+# ── build/scratch directories ──
+target/
+cargo_workspaces/
+test_workspace/
+example/
+paper-draft/
+.vscode/
+pid.txt
+
+# ── large or non-redistributable local data (not referenced by the paper) ──
+lit-rev/papers/
+results/week4/profiles/
+results/week5/*/profiles/
+results/web_demo/
+results/paper_phase3_analysis.json
+
+# ── personal / unrelated files ──
+cold-email.txt
+quant-interview-6.md
+image*.png

@@ -1,0 +1,176 @@
+[
+  {
+    "name": "type_mismatch_str_for_i32",
+    "expected_code": "E0308",
+    "why": "Function returns i32 but body is &str \u2014 pure type-mismatch on closed body.",
+    "n_errors": 1,
+    "error_codes": [
+      "E0308"
+    ],
+    "error_messages": [
+      "expected i32, found &'static str"
+    ],
+    "n_blocking": 1,
+    "blocking_codes": [
+      "E0308"
+    ],
+    "blocking_reasons": [
+      "semantic-in-completed-code"
+    ]
+  },
+  {
+    "name": "type_mismatch_assignment",
+    "expected_code": "E0308",
+    "why": "Assigning &str to i32 in a let binding.",
+    "n_errors": 1,
+    "error_codes": [
+      "E0308"
+    ],
+    "error_messages": [
+      "expected i32, found &'static str"
+    ],
+    "n_blocking": 1,
+    "blocking_codes": [
+      "E0308"
+    ],
+    "blocking_reasons": [
+      "semantic-in-completed-code"
+    ]
+  },
+  {
+    "name": "unresolved_import",
+    "expected_code": "E0432",
+    "why": "Misspelled import \u2014 module-scope, never demoted.",
+    "n_errors": 1,
+    "error_codes": [
+      "E0432"
+    ],
+    "error_messages": [
+      "unresolved import"
+    ],
+    "n_blocking": 1,
+    "blocking_codes": [
+      "E0432"
+    ],
+    "blocking_reasons": [
+      "semantic-in-completed-code"
+    ]
+  },
+  {
+    "name": "unresolved_function_call",
+    "expected_code": "E0425",
+    "why": "Calling an undefined function from main, no fn body still open.",
+    "n_errors": 1,
+    "error_codes": [
+      "E0425"
+    ],
+    "error_messages": [
+      "no such value in this scope"
+    ],
+    "n_blocking": 1,
+    "blocking_codes": [
+      "E0425"
+    ],
+    "blocking_reasons": [
+      "semantic-in-completed-code"
+    ]
+  },
+  {
+    "name": "no_such_method",
+    "expected_code": "E0599",
+    "why": "Method not found on i32.",
+    "n_errors": 1,
+    "error_codes": [
+      "E0599"
+    ],
+    "error_messages": [
+      "no method `no_such_method` on type `i32`"
+    ],
+    "n_blocking": 1,
+    "blocking_codes": [
+      "E0599"
+    ],
+    "blocking_reasons": [
+      "semantic-in-completed-code"
+    ]
+  },
+  {
+    "name": "missing_match_arm",
+    "expected_code": "E0004",
+    "why": "Non-exhaustive match on Option (no None arm).",
+    "n_errors": 1,
+    "error_codes": [
+      "E0004"
+    ],
+    "error_messages": [
+      "missing match arm: `None` not covered"
+    ],
+    "n_blocking": 1,
+    "blocking_codes": [
+      "E0004"
+    ],
+    "blocking_reasons": [
+      "semantic-in-completed-code"
+    ]
+  },
+  {
+    "name": "trait_bound_not_satisfied",
+    "expected_code": "E0277",
+    "why": "NoClone does not implement Clone \u2014 trait bound failure.",
+    "n_errors": 0,
+    "error_codes": [],
+    "error_messages": [],
+    "n_blocking": 0,
+    "blocking_codes": [],
+    "blocking_reasons": []
+  },
+  {
+    "name": "wrong_arity",
+    "expected_code": "E0061",
+    "why": "Function called with wrong number of arguments.",
+    "n_errors": 1,
+    "error_codes": [
+      "E0107"
+    ],
+    "error_messages": [
+      "expected 2 arguments, found 1"
+    ],
+    "n_blocking": 1,
+    "blocking_codes": [
+      "E0107"
+    ],
+    "blocking_reasons": [
+      "semantic-in-completed-code"
+    ]
+  },
+  {
+    "name": "wrong_return_type_int_for_string",
+    "expected_code": "E0308",
+    "why": "Returns i32 but signature says String \u2014 closed body type-mismatch.",
+    "n_errors": 1,
+    "error_codes": [
+      "E0308"
+    ],
+    "error_messages": [
+      "expected String, found i32"
+    ],
+    "n_blocking": 1,
+    "blocking_codes": [
+      "E0308"
+    ],
+    "blocking_reasons": [
+      "semantic-in-completed-code"
+    ]
+  },
+  {
+    "name": "use_after_move",
+    "expected_code": "E0382",
+    "why": "Use after move \u2014 borrow-checker error, native LSP unlikely to catch.",
+    "n_errors": 0,
+    "error_codes": [],
+    "error_messages": [],
+    "n_blocking": 0,
+    "blocking_codes": [],
+    "blocking_reasons": []
+  }
+]

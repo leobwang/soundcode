@@ -1,0 +1,404 @@
+[
+  {
+    "name": "A1_type_mismatch",
+    "category": "A_closed_real_error",
+    "open_fn": false,
+    "label": "blocking",
+    "n_errors": 1,
+    "error_codes": [
+      "E0308"
+    ],
+    "n_blocking": 1,
+    "blocking_codes": [
+      "E0308"
+    ],
+    "blocking_reasons": [
+      "semantic-in-completed-code"
+    ],
+    "outcome": "TP",
+    "note": "i32 vs &str"
+  },
+  {
+    "name": "A2_unresolved_import",
+    "category": "A_closed_real_error",
+    "open_fn": false,
+    "label": "blocking",
+    "n_errors": 1,
+    "error_codes": [
+      "E0432"
+    ],
+    "n_blocking": 1,
+    "blocking_codes": [
+      "E0432"
+    ],
+    "blocking_reasons": [
+      "semantic-in-completed-code"
+    ],
+    "outcome": "TP",
+    "note": "typo'd import"
+  },
+  {
+    "name": "A3_unresolved_call",
+    "category": "A_closed_real_error",
+    "open_fn": false,
+    "label": "blocking",
+    "n_errors": 1,
+    "error_codes": [
+      "E0425"
+    ],
+    "n_blocking": 1,
+    "blocking_codes": [
+      "E0425"
+    ],
+    "blocking_reasons": [
+      "semantic-in-completed-code"
+    ],
+    "outcome": "TP",
+    "note": "undefined call"
+  },
+  {
+    "name": "A4_no_method",
+    "category": "A_closed_real_error",
+    "open_fn": false,
+    "label": "blocking",
+    "n_errors": 1,
+    "error_codes": [
+      "E0599"
+    ],
+    "n_blocking": 1,
+    "blocking_codes": [
+      "E0599"
+    ],
+    "blocking_reasons": [
+      "semantic-in-completed-code"
+    ],
+    "outcome": "TP",
+    "note": "missing method"
+  },
+  {
+    "name": "A5_match_nonexh",
+    "category": "A_closed_real_error",
+    "open_fn": false,
+    "label": "blocking",
+    "n_errors": 1,
+    "error_codes": [
+      "E0004"
+    ],
+    "n_blocking": 1,
+    "blocking_codes": [
+      "E0004"
+    ],
+    "blocking_reasons": [
+      "semantic-in-completed-code"
+    ],
+    "outcome": "TP",
+    "note": "non-exhaustive match"
+  },
+  {
+    "name": "A6_wrong_arity",
+    "category": "A_closed_real_error",
+    "open_fn": false,
+    "label": "blocking",
+    "n_errors": 1,
+    "error_codes": [
+      "E0107"
+    ],
+    "n_blocking": 1,
+    "blocking_codes": [
+      "E0107"
+    ],
+    "blocking_reasons": [
+      "semantic-in-completed-code"
+    ],
+    "outcome": "TP",
+    "note": "wrong number of args"
+  },
+  {
+    "name": "A7_return_type",
+    "category": "A_closed_real_error",
+    "open_fn": false,
+    "label": "blocking",
+    "n_errors": 1,
+    "error_codes": [
+      "E0308"
+    ],
+    "n_blocking": 1,
+    "blocking_codes": [
+      "E0308"
+    ],
+    "blocking_reasons": [
+      "semantic-in-completed-code"
+    ],
+    "outcome": "TP",
+    "note": "i32 vs String"
+  },
+  {
+    "name": "A8_assign_mismatch",
+    "category": "A_closed_real_error",
+    "open_fn": false,
+    "label": "blocking",
+    "n_errors": 1,
+    "error_codes": [
+      "E0308"
+    ],
+    "n_blocking": 1,
+    "blocking_codes": [
+      "E0308"
+    ],
+    "blocking_reasons": [
+      "semantic-in-completed-code"
+    ],
+    "outcome": "TP",
+    "note": "let-binding type mismatch"
+  },
+  {
+    "name": "B1_simple_int",
+    "category": "B_closed_clean",
+    "open_fn": false,
+    "label": "non_blocking",
+    "n_errors": 0,
+    "error_codes": [],
+    "n_blocking": 0,
+    "blocking_codes": [],
+    "blocking_reasons": [],
+    "outcome": "TN",
+    "note": "trivial valid"
+  },
+  {
+    "name": "B2_generic_fn",
+    "category": "B_closed_clean",
+    "open_fn": false,
+    "label": "non_blocking",
+    "n_errors": 0,
+    "error_codes": [],
+    "n_blocking": 0,
+    "blocking_codes": [],
+    "blocking_reasons": [],
+    "outcome": "TN",
+    "note": "generic fn"
+  },
+  {
+    "name": "B3_vec_collect",
+    "category": "B_closed_clean",
+    "open_fn": false,
+    "label": "non_blocking",
+    "n_errors": 0,
+    "error_codes": [],
+    "n_blocking": 0,
+    "blocking_codes": [],
+    "blocking_reasons": [],
+    "outcome": "TN",
+    "note": "iterator chain"
+  },
+  {
+    "name": "B4_struct_use",
+    "category": "B_closed_clean",
+    "open_fn": false,
+    "label": "non_blocking",
+    "n_errors": 0,
+    "error_codes": [],
+    "n_blocking": 0,
+    "blocking_codes": [],
+    "blocking_reasons": [],
+    "outcome": "TN",
+    "note": "struct"
+  },
+  {
+    "name": "B5_match_full",
+    "category": "B_closed_clean",
+    "open_fn": false,
+    "label": "non_blocking",
+    "n_errors": 0,
+    "error_codes": [],
+    "n_blocking": 0,
+    "blocking_codes": [],
+    "blocking_reasons": [],
+    "outcome": "TN",
+    "note": "exhaustive match"
+  },
+  {
+    "name": "B6_trait_impl",
+    "category": "B_closed_clean",
+    "open_fn": false,
+    "label": "non_blocking",
+    "n_errors": 0,
+    "error_codes": [],
+    "n_blocking": 0,
+    "blocking_codes": [],
+    "blocking_reasons": [],
+    "outcome": "TN",
+    "note": "trait impl"
+  },
+  {
+    "name": "C1_open_type_mismatch",
+    "category": "C_open_real_in_closed_stmt",
+    "open_fn": true,
+    "label": "blocking",
+    "n_errors": 2,
+    "error_codes": [
+      "syntax-error",
+      "E0308"
+    ],
+    "n_blocking": 0,
+    "blocking_codes": [],
+    "blocking_reasons": [],
+    "outcome": "FN",
+    "note": "completed let with type mismatch \u2014 real, but classifier demotes"
+  },
+  {
+    "name": "C2_open_unresolved_import",
+    "category": "C_open_real_in_closed_stmt",
+    "open_fn": true,
+    "label": "blocking",
+    "n_errors": 2,
+    "error_codes": [
+      "syntax-error",
+      "E0432"
+    ],
+    "n_blocking": 1,
+    "blocking_codes": [
+      "E0432"
+    ],
+    "blocking_reasons": [
+      "semantic-in-completed-code"
+    ],
+    "outcome": "TP",
+    "note": "module-scope import error; should NOT demote (always blocking)"
+  },
+  {
+    "name": "C3_open_no_method",
+    "category": "C_open_real_in_closed_stmt",
+    "open_fn": true,
+    "label": "blocking",
+    "n_errors": 2,
+    "error_codes": [
+      "syntax-error",
+      "E0599"
+    ],
+    "n_blocking": 1,
+    "blocking_codes": [
+      "E0599"
+    ],
+    "blocking_reasons": [
+      "semantic-in-completed-code"
+    ],
+    "outcome": "TP",
+    "note": "no_method on closed expr"
+  },
+  {
+    "name": "D1_forward_call",
+    "category": "D_open_forward_ref",
+    "open_fn": true,
+    "label": "non_blocking",
+    "n_errors": 2,
+    "error_codes": [
+      "syntax-error",
+      "E0425"
+    ],
+    "n_blocking": 0,
+    "blocking_codes": [],
+    "blocking_reasons": [],
+    "outcome": "TN",
+    "note": "calls helper that will be defined below \u2014 correct demotion"
+  },
+  {
+    "name": "D2_forward_struct_use",
+    "category": "D_open_forward_ref",
+    "open_fn": true,
+    "label": "non_blocking",
+    "n_errors": 1,
+    "error_codes": [
+      "syntax-error"
+    ],
+    "n_blocking": 0,
+    "blocking_codes": [],
+    "blocking_reasons": [],
+    "outcome": "TN",
+    "note": "uses MyStruct, defined later"
+  },
+  {
+    "name": "D3_forward_chained",
+    "category": "D_open_forward_ref",
+    "open_fn": true,
+    "label": "non_blocking",
+    "n_errors": 3,
+    "error_codes": [
+      "syntax-error",
+      "E0425",
+      "E0425"
+    ],
+    "n_blocking": 0,
+    "blocking_codes": [],
+    "blocking_reasons": [],
+    "outcome": "TN",
+    "note": "calls multiple helpers"
+  },
+  {
+    "name": "E1_missing_semi",
+    "category": "E_inprogress_syntax",
+    "open_fn": true,
+    "label": "non_blocking",
+    "n_errors": 2,
+    "error_codes": [
+      "syntax-error",
+      "syntax-error"
+    ],
+    "n_blocking": 0,
+    "blocking_codes": [],
+    "blocking_reasons": [],
+    "outcome": "TN",
+    "note": "missing semicolon"
+  },
+  {
+    "name": "E2_unterm_string",
+    "category": "E_inprogress_syntax",
+    "open_fn": true,
+    "label": "non_blocking",
+    "n_errors": 3,
+    "error_codes": [
+      "syntax-error",
+      "syntax-error",
+      "syntax-error"
+    ],
+    "n_blocking": 0,
+    "blocking_codes": [],
+    "blocking_reasons": [],
+    "outcome": "TN",
+    "note": "unterminated string"
+  },
+  {
+    "name": "E3_unclosed_if",
+    "category": "E_inprogress_syntax",
+    "open_fn": true,
+    "label": "non_blocking",
+    "n_errors": 3,
+    "error_codes": [
+      "syntax-error",
+      "syntax-error",
+      "E0425"
+    ],
+    "n_blocking": 0,
+    "blocking_codes": [],
+    "blocking_reasons": [],
+    "outcome": "TN",
+    "note": "unclosed if"
+  },
+  {
+    "name": "E4_open_paren",
+    "category": "E_inprogress_syntax",
+    "open_fn": true,
+    "label": "non_blocking",
+    "n_errors": 4,
+    "error_codes": [
+      "syntax-error",
+      "syntax-error",
+      "syntax-error",
+      "syntax-error"
+    ],
+    "n_blocking": 0,
+    "blocking_codes": [],
+    "blocking_reasons": [],
+    "outcome": "TN",
+    "note": "unclosed paren"
+  }
+]

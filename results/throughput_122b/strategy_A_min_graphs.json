@@ -1,0 +1,13 @@
+{
+  "strategy": "A_min_graphs",
+  "status": "ok",
+  "warmup_s": 92.03107761198771,
+  "ttft_s": null,
+  "gen_s": 1.787988996016793,
+  "gen_tokens": 60,
+  "decode_tps": 33.55725350305035,
+  "total_tps": 33.55725350305035,
+  "vram_after_load_mib": 75300,
+  "vram_peak_mib": 75300,
+  "text_preview": "\n    if n <= 1:\n        return n\n    else:\n        return fibonacci(n-1) + fibonacci(n-2)\n\n# Example usage:\nn = 10\nprint"
+}

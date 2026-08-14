@@ -1,0 +1,13 @@
+{
+  "strategy": "B_cutlass_marlin",
+  "status": "ok",
+  "warmup_s": 47.017461245995946,
+  "ttft_s": 17.121807955991244,
+  "gen_s": 36.584626198979095,
+  "gen_tokens": 200,
+  "decode_tps": 10.22462407630491,
+  "total_tps": 5.466777189747016,
+  "vram_after_load_mib": 84098,
+  "vram_peak_mib": 84392,
+  "text_preview": " def __init__(self, max_size: int = 1000, default_ttl: int = 300):\n         self.max_size = max_size\n         self.defau"
+}

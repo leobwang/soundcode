@@ -1,0 +1,18 @@
+[
+  {
+    "name": "HumanEval_0_has_close_elements",
+    "arm": "raw",
+    "completion": "    for i in 0..numbers.len() {\n        for j in i + 1..numbers.len() {\n            if (numbers[i] - numbers[j]).abs() < threshold {\n                return true;\n            }\n        }\n    }\n    false",
+    "compiled": true,
+    "passed": true,
+    "wall_clock_s": 0.3558909319981467,
+    "tokens_emitted": 53,
+    "tokens_kept": 201,
+    "rollback_count": 0,
+    "lsp_calls": 0,
+    "mgd_triggers": 0,
+    "mgd_constrained_steps": 0,
+    "mgd_empty_masks": 0,
+    "mgd_ra_calls": 0
+  }
+]

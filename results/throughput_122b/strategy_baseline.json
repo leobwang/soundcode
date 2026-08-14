@@ -1,0 +1,13 @@
+{
+  "strategy": "baseline",
+  "status": "ok",
+  "warmup_s": 38.33718347598915,
+  "ttft_s": 0.32850299298297614,
+  "gen_s": 5.0987422759935725,
+  "gen_tokens": 200,
+  "decode_tps": 41.71698487091553,
+  "total_tps": 39.22535974051106,
+  "vram_after_load_mib": 89080,
+  "vram_peak_mib": 89150,
+  "text_preview": " \"\"\"\n     A high-performance in-memory key-value store with TTL eviction, LRU policy, and HTTP API.\n     \"\"\"\n     def __"
+}

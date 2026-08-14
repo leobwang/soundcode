@@ -1,0 +1,13 @@
+{
+  "strategy": "A_min_graphs",
+  "status": "ok",
+  "warmup_s": 46.348729354009265,
+  "ttft_s": 0.17976512399036437,
+  "gen_s": 2.2183590680069756,
+  "gen_tokens": 200,
+  "decode_tps": 97.61630097257783,
+  "total_tps": 90.1567302085521,
+  "vram_after_load_mib": 75298,
+  "vram_peak_mib": 75298,
+  "text_preview": " \"\"\"\n     A high-performance in-memory key-value store with TTL eviction, LRU policy, and thread safety.\n     \"\"\"\n     d"
+}

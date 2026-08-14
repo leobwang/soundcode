@@ -1,0 +1,13 @@
+{
+  "strategy": "A_stacked",
+  "status": "ok",
+  "warmup_s": 46.32348520300002,
+  "ttft_s": 0.16427353999461047,
+  "gen_s": 2.2178286839916836,
+  "gen_tokens": 200,
+  "decode_tps": 96.90511627199996,
+  "total_tps": 90.17829079567895,
+  "vram_after_load_mib": 75298,
+  "vram_peak_mib": 75298,
+  "text_preview": "\n    if n <= 1:\n        return n\n    else:\n        return fibonacci(n-1) + fibonacci(n-2)\n\n# Example usage:\nn = 10\nprint"
+}

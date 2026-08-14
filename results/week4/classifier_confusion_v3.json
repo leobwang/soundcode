@@ -1,0 +1,681 @@
+[
+  {
+    "name": "CB_typeM_return",
+    "condition": "closed",
+    "err_class": "type-mismatch",
+    "open_fn": false,
+    "ground_truth": "blocking",
+    "ground_truth_codes": [
+      "E0308"
+    ],
+    "classifier_verdict": "blocking",
+    "raw_lsp_codes_on_open": [
+      "E0308"
+    ],
+    "blocking_codes_on_open": [
+      "E0308"
+    ],
+    "outcome": "TP"
+  },
+  {
+    "name": "CB_typeM_let",
+    "condition": "closed",
+    "err_class": "type-mismatch",
+    "open_fn": false,
+    "ground_truth": "blocking",
+    "ground_truth_codes": [
+      "E0308"
+    ],
+    "classifier_verdict": "blocking",
+    "raw_lsp_codes_on_open": [
+      "E0308"
+    ],
+    "blocking_codes_on_open": [
+      "E0308"
+    ],
+    "outcome": "TP"
+  },
+  {
+    "name": "CB_typeM_arith",
+    "condition": "closed",
+    "err_class": "type-mismatch",
+    "open_fn": false,
+    "ground_truth": "blocking",
+    "ground_truth_codes": [
+      "E0308"
+    ],
+    "classifier_verdict": "blocking",
+    "raw_lsp_codes_on_open": [
+      "E0308"
+    ],
+    "blocking_codes_on_open": [
+      "E0308"
+    ],
+    "outcome": "TP"
+  },
+  {
+    "name": "CB_typeM_returnString",
+    "condition": "closed",
+    "err_class": "type-mismatch",
+    "open_fn": false,
+    "ground_truth": "blocking",
+    "ground_truth_codes": [
+      "E0308"
+    ],
+    "classifier_verdict": "blocking",
+    "raw_lsp_codes_on_open": [
+      "E0308"
+    ],
+    "blocking_codes_on_open": [
+      "E0308"
+    ],
+    "outcome": "TP"
+  },
+  {
+    "name": "CB_unrIMPORT",
+    "condition": "closed",
+    "err_class": "unresolved-import",
+    "open_fn": false,
+    "ground_truth": "blocking",
+    "ground_truth_codes": [
+      "E0432"
+    ],
+    "classifier_verdict": "blocking",
+    "raw_lsp_codes_on_open": [
+      "E0432"
+    ],
+    "blocking_codes_on_open": [
+      "E0432"
+    ],
+    "outcome": "TP"
+  },
+  {
+    "name": "CB_unrREF_fn",
+    "condition": "closed",
+    "err_class": "unresolved-ref",
+    "open_fn": false,
+    "ground_truth": "blocking",
+    "ground_truth_codes": [
+      "E0425"
+    ],
+    "classifier_verdict": "blocking",
+    "raw_lsp_codes_on_open": [
+      "E0425"
+    ],
+    "blocking_codes_on_open": [
+      "E0425"
+    ],
+    "outcome": "TP"
+  },
+  {
+    "name": "CB_unrREF_var",
+    "condition": "closed",
+    "err_class": "unresolved-ref",
+    "open_fn": false,
+    "ground_truth": "blocking",
+    "ground_truth_codes": [
+      "E0425"
+    ],
+    "classifier_verdict": "blocking",
+    "raw_lsp_codes_on_open": [
+      "E0425"
+    ],
+    "blocking_codes_on_open": [
+      "E0425"
+    ],
+    "outcome": "TP"
+  },
+  {
+    "name": "CB_unrTYPE",
+    "condition": "closed",
+    "err_class": "unresolved-type",
+    "open_fn": false,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "CB_noMethod_int",
+    "condition": "closed",
+    "err_class": "no-method",
+    "open_fn": false,
+    "ground_truth": "blocking",
+    "ground_truth_codes": [
+      "E0599"
+    ],
+    "classifier_verdict": "blocking",
+    "raw_lsp_codes_on_open": [
+      "E0599"
+    ],
+    "blocking_codes_on_open": [
+      "E0599"
+    ],
+    "outcome": "TP"
+  },
+  {
+    "name": "CB_noMethod_str",
+    "condition": "closed",
+    "err_class": "no-method",
+    "open_fn": false,
+    "ground_truth": "blocking",
+    "ground_truth_codes": [
+      "E0599"
+    ],
+    "classifier_verdict": "blocking",
+    "raw_lsp_codes_on_open": [
+      "E0599"
+    ],
+    "blocking_codes_on_open": [
+      "E0599"
+    ],
+    "outcome": "TP"
+  },
+  {
+    "name": "CB_match_nonexh",
+    "condition": "closed",
+    "err_class": "missing-arm",
+    "open_fn": false,
+    "ground_truth": "blocking",
+    "ground_truth_codes": [
+      "E0004"
+    ],
+    "classifier_verdict": "blocking",
+    "raw_lsp_codes_on_open": [
+      "E0004"
+    ],
+    "blocking_codes_on_open": [
+      "E0004"
+    ],
+    "outcome": "TP"
+  },
+  {
+    "name": "CB_arity_few",
+    "condition": "closed",
+    "err_class": "wrong-arity",
+    "open_fn": false,
+    "ground_truth": "blocking",
+    "ground_truth_codes": [
+      "E0107"
+    ],
+    "classifier_verdict": "blocking",
+    "raw_lsp_codes_on_open": [
+      "E0107"
+    ],
+    "blocking_codes_on_open": [
+      "E0107"
+    ],
+    "outcome": "TP"
+  },
+  {
+    "name": "CB_arity_many",
+    "condition": "closed",
+    "err_class": "wrong-arity",
+    "open_fn": false,
+    "ground_truth": "blocking",
+    "ground_truth_codes": [
+      "E0107"
+    ],
+    "classifier_verdict": "blocking",
+    "raw_lsp_codes_on_open": [
+      "E0107"
+    ],
+    "blocking_codes_on_open": [
+      "E0107"
+    ],
+    "outcome": "TP"
+  },
+  {
+    "name": "CB_traitBound",
+    "condition": "closed",
+    "err_class": "trait-bound",
+    "open_fn": false,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "CB_useAfterMove",
+    "condition": "closed",
+    "err_class": "borrow-check",
+    "open_fn": false,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "CC_simple_int",
+    "condition": "closed",
+    "err_class": "none",
+    "open_fn": false,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "CC_generic_fn",
+    "condition": "closed",
+    "err_class": "none",
+    "open_fn": false,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "CC_iterator",
+    "condition": "closed",
+    "err_class": "none",
+    "open_fn": false,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "CC_struct",
+    "condition": "closed",
+    "err_class": "none",
+    "open_fn": false,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "CC_match_full",
+    "condition": "closed",
+    "err_class": "none",
+    "open_fn": false,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "CC_explicit_ret",
+    "condition": "closed",
+    "err_class": "none",
+    "open_fn": false,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "CC_iter_collect",
+    "condition": "closed",
+    "err_class": "none",
+    "open_fn": false,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "CC_match_at",
+    "condition": "closed",
+    "err_class": "none",
+    "open_fn": false,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "CC_unused_var",
+    "condition": "closed",
+    "err_class": "warning-only",
+    "open_fn": false,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "OB_unrIMPORT_open",
+    "condition": "open",
+    "err_class": "unresolved-import",
+    "open_fn": true,
+    "ground_truth": "blocking",
+    "ground_truth_codes": [
+      "E0432"
+    ],
+    "classifier_verdict": "blocking",
+    "raw_lsp_codes_on_open": [
+      "syntax-error",
+      "E0432"
+    ],
+    "blocking_codes_on_open": [
+      "E0432"
+    ],
+    "outcome": "TP"
+  },
+  {
+    "name": "OB_noMethod_closed_expr",
+    "condition": "open",
+    "err_class": "no-method",
+    "open_fn": true,
+    "ground_truth": "blocking",
+    "ground_truth_codes": [
+      "E0599"
+    ],
+    "classifier_verdict": "blocking",
+    "raw_lsp_codes_on_open": [
+      "syntax-error",
+      "E0599"
+    ],
+    "blocking_codes_on_open": [
+      "E0599"
+    ],
+    "outcome": "TP"
+  },
+  {
+    "name": "OB_match_nonexh_closed",
+    "condition": "open",
+    "err_class": "missing-arm",
+    "open_fn": true,
+    "ground_truth": "blocking",
+    "ground_truth_codes": [
+      "E0004"
+    ],
+    "classifier_verdict": "blocking",
+    "raw_lsp_codes_on_open": [
+      "syntax-error",
+      "E0004"
+    ],
+    "blocking_codes_on_open": [
+      "E0004"
+    ],
+    "outcome": "TP"
+  },
+  {
+    "name": "OB_traitBound_closed",
+    "condition": "open",
+    "err_class": "trait-bound",
+    "open_fn": true,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [
+      "syntax-error"
+    ],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "OB_typeM_demoted",
+    "condition": "open",
+    "err_class": "type-mismatch",
+    "open_fn": true,
+    "ground_truth": "blocking",
+    "ground_truth_codes": [
+      "E0308"
+    ],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [
+      "syntax-error",
+      "E0308",
+      "E0308"
+    ],
+    "blocking_codes_on_open": [],
+    "outcome": "FN"
+  },
+  {
+    "name": "OB_unrREF_demoted",
+    "condition": "open",
+    "err_class": "unresolved-ref",
+    "open_fn": true,
+    "ground_truth": "blocking",
+    "ground_truth_codes": [
+      "E0425"
+    ],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [
+      "syntax-error",
+      "E0425"
+    ],
+    "blocking_codes_on_open": [],
+    "outcome": "FN"
+  },
+  {
+    "name": "OB_arity_in_open",
+    "condition": "open",
+    "err_class": "wrong-arity",
+    "open_fn": true,
+    "ground_truth": "blocking",
+    "ground_truth_codes": [
+      "E0107"
+    ],
+    "classifier_verdict": "blocking",
+    "raw_lsp_codes_on_open": [
+      "syntax-error",
+      "E0107"
+    ],
+    "blocking_codes_on_open": [
+      "E0107"
+    ],
+    "outcome": "TP"
+  },
+  {
+    "name": "OB_useAfterMove_open",
+    "condition": "open",
+    "err_class": "borrow-check",
+    "open_fn": true,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [
+      "syntax-error"
+    ],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "OC_fwd_call",
+    "condition": "open",
+    "err_class": "forward-ref",
+    "open_fn": true,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [
+      "syntax-error",
+      "E0425"
+    ],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "OC_fwd_struct",
+    "condition": "open",
+    "err_class": "forward-ref",
+    "open_fn": true,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [
+      "syntax-error"
+    ],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "OC_fwd_chain",
+    "condition": "open",
+    "err_class": "forward-ref",
+    "open_fn": true,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [
+      "syntax-error",
+      "E0425",
+      "E0425"
+    ],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "OC_missing_semi",
+    "condition": "open",
+    "err_class": "syntax-only",
+    "open_fn": true,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [
+      "syntax-error",
+      "syntax-error"
+    ],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "OC_unterm_string",
+    "condition": "open",
+    "err_class": "syntax-only",
+    "open_fn": true,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [
+      "syntax-error",
+      "syntax-error",
+      "syntax-error"
+    ],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "OC_unclosed_if",
+    "condition": "open",
+    "err_class": "syntax-only",
+    "open_fn": true,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [
+      "syntax-error",
+      "syntax-error"
+    ],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "OC_unclosed_paren",
+    "condition": "open",
+    "err_class": "syntax-only",
+    "open_fn": true,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [
+      "syntax-error",
+      "syntax-error",
+      "syntax-error",
+      "syntax-error"
+    ],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "OC_clean_partial_1stmt",
+    "condition": "open",
+    "err_class": "none",
+    "open_fn": true,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [
+      "syntax-error"
+    ],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "OC_clean_partial_2stmt",
+    "condition": "open",
+    "err_class": "none",
+    "open_fn": true,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [
+      "syntax-error"
+    ],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "OC_clean_loop",
+    "condition": "open",
+    "err_class": "none",
+    "open_fn": true,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [
+      "syntax-error"
+    ],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "OC_past_edge_typo",
+    "condition": "open",
+    "err_class": "past-edge",
+    "open_fn": true,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [
+      "syntax-error",
+      "syntax-error",
+      "E0425"
+    ],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  },
+  {
+    "name": "OC_unused_only",
+    "condition": "open",
+    "err_class": "warning-only",
+    "open_fn": true,
+    "ground_truth": "non_blocking",
+    "ground_truth_codes": [],
+    "classifier_verdict": "non_blocking",
+    "raw_lsp_codes_on_open": [
+      "syntax-error"
+    ],
+    "blocking_codes_on_open": [],
+    "outcome": "TN"
+  }
+]

@@ -1,0 +1,13 @@
+{
+  "strategy": "C_on_B",
+  "status": "ok",
+  "warmup_s": 42.75101566201192,
+  "ttft_s": 0.17746030297712423,
+  "gen_s": 2.38827060899348,
+  "gen_tokens": 200,
+  "decode_tps": 90.01224549137224,
+  "total_tps": 83.74260406122428,
+  "vram_after_load_mib": 82008,
+  "vram_peak_mib": 82012,
+  "text_preview": " def __init__(self, capacity: int = 1000, ttl_seconds: int = 300):\n         self.capacity = capacity\n         self.ttl_s"
+}
