@@ -62,11 +62,10 @@ the separate reason documented in \S\ref{sec:results-rocode}).
 pass@1, mean wall-clock time per problem (seconds), mean rollback
 count per problem, and compile rate (whether the final buffer
 \code{cargo check}-passes / $g{+}{+}\;\code{-fsyntax-only}$-passes).
-We additionally report \emph{verifier idle time} (seconds spent
-awaiting a verdict that already blocks decoding) for the sync arms
-and the corresponding \emph{producer wait fraction} for the async
-arms, to make the saved wall-time directly attributable to async
-overlap.
+We additionally report the \emph{verifier-overhead share} of each
+arm's wall-time --- estimated as the residual over the vanilla-arm
+mean (\S\ref{sec:results-wait}) --- to make the saved wall-time
+directly attributable to async overlap.
 
 \paragraph{Runner revision (v2).} During the follow-up we found a
 bug in the boundary detector's firing logic: because trailing
@@ -75,7 +74,9 @@ token chunk re-fired the boundary that had already been checked,
 re-invoking the verifier (and, in sync mode, aborting the stream)
 on the \emph{same} boundary. The tax fell asymmetrically on the
 sync arms --- async's single-in-flight-check rule absorbs
-re-fires --- inflating sync wall-times by roughly $24\%$ on Rust
+re-fires --- because async coalesces duplicate checks behind the
+single in-flight task and never aborts the stream for them ---
+inflating sync wall-times by roughly $24\%$ on Rust
 and $46\%$ on C++
 and overstating the async advantage. All numbers in this revision
 come from the corrected runner (v2). Removing the spurious aborts
@@ -141,7 +142,10 @@ and the same verifier.}
     ratio of means $\overline{t}_{\text{sync}} /
     \overline{t}_{\text{async}}$ for the naive-rollback pair in
     each language: $1.47\times$ on Rust, $2.16\times$ on C++.
-    Plain (gray) is the verifier-free baseline.}
+    Plain (gray) is the verifier-free baseline; the
+    ``Async-E'' bars are the \textsc{RecBackoff} arm
+    (Table~\ref{tab:main}), not the fully-wired
+    \textsc{ROCODEEntropy} of \S\ref{sec:extended}.}
   \label{fig:walltime-bars}
 \end{figure}
 
@@ -279,9 +283,14 @@ entropy-based target selection, evaluated in
 
 \subsection{Extended arms (post-deadline follow-up)}\label{sec:extended}
 
-The arms below were run after the original submission, on the same
-model, hardware, benchmark revision, and decoding configuration as
-Phase~1; raw records are committed alongside the Phase-1 data.
+The arms below were run after the original submission on the same
+hardware. Except where a paragraph states otherwise (a different
+model size, benchmark, sampling temperature, or logprob
+computation), they share Phase~1's model, benchmark revision,
+decoding configuration, and corrected (v2) runner; the resampling
+baseline predates the runner fix, which cannot affect it (it uses
+no in-loop boundary detection). Raw records are committed
+alongside the Phase-1 data.
 
 \paragraph{ROCODEEntropy, fully wired.} We wired ROCODE's complete
 target-selection rule into the sampler --- per-token Shannon
@@ -370,10 +379,14 @@ than weakens: sync-vs-async pass@1 is non-significant on both
 languages ($15$~vs~$10$ discordant, $p\!=\!0.42$ Rust; $11$~vs~$5$,
 $p\!=\!0.21$ C++), and async-vs-\textsf{Vanilla} on C++ has
 \emph{zero} discordant problems out of $397$ --- the verified arm
-passes exactly the problems vanilla decoding passes. The bar any
+passes exactly the problems vanilla decoding passes.
+
+\paragraph{Matched-budget resampling baseline (HumanEval).}
+The bar any
 in-loop verification system must clear
 \citep{olausson2024selfrepair} is post-hoc filtering under the
-same budget. Our baseline samples complete candidates at
+same budget. Our baseline runs on HumanEval-rs/-cpp against the
+Phase-1 arms: it samples complete candidates at
 $T\!=\!0.8$ (seeded per sample) and submits the first that
 \emph{compiles} --- the compiler as a post-hoc filter rather than
 an in-loop supervisor; unit tests are never consulted during
@@ -521,7 +534,8 @@ before the v2 revision: a 20-problem-per-language re-execution of
 all eight arms matched the stored records exactly on $160/160$
 per-problem compile/test/token outcomes with per-arm mean
 wall-times within $3\%$, and five independent full-grid executions
-agreed to $\pm 0.03\%$ (Rust) and $\pm 0.2\%$ (C++) on the
+agreed to within a relative standard deviation of $0.03\%$ (Rust)
+and $0.2\%$ (C++) on the
 headline ratio with per-problem outcomes identical across all
 five runs --- including the async arms', which are race-dependent
 in principle. The corrected (v2) runner shows the same stability

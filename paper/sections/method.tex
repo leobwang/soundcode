@@ -44,7 +44,10 @@ Four components change relative to the synchronous baseline:
 \item A \textbf{verifier queue} of in-flight tasks, ordered by spawn
   time. The consumer polls this queue on a tight schedule (every
   $K$ tokens; we use $K\!=\!1$) and removes completed tasks left to
-  right.
+  right. (The reference implementation degenerates the queue to a
+  single in-flight check: a boundary spawns a task only when none
+  is pending, which coalesces closely-spaced boundaries into the
+  next check.)
 \item A \textbf{rollback driver} that, on the first
   \textsc{Blocking} diagnostic, cancels pending tasks, truncates the
   buffer to the most recent boundary checkpoint (backing off to
@@ -157,8 +160,9 @@ closest-neighbour systems along this axis.
 \begin{table}[t]
 \centering
 \caption{Verifier cost spectrum. Times are typical per-call on a
-  single CPU core (verifier) or on an H100 (LM-as-verifier, batch=1,
-  $K\!=\!1$ token). Per-token LM cost is $\sim$$10$--$30\,\mathrm{ms}$
+  single CPU core (compiler/LSP verifiers) or a modern GPU (the
+  learned-classifier row). Per-token LM cost is
+  $\sim$$10$--$30\,\mathrm{ms}$
   for a 7B-class model. The async / sync prediction is whether
   per-call verifier cost exceeds per-token LM cost.}
 \label{tab:verifier-cost}
@@ -177,8 +181,8 @@ LSP completions (Java JDT) & MGD \citep{agrawal2023monitor}
   & ${\sim}20$--$80\,\mathrm{ms}$ & yes \\
 \code{cargo check} (incremental) & SoundCode (this work)
   & ${\sim}35$--$500\,\mathrm{ms}$ & yes \\
-\code{javac} (warm JVM) & --- & ${\sim}180\,\mathrm{ms}$ & yes \\
-LSP completions (rust-analyzer) & SoundCode (unevaluated)
+\code{javac} (warm JVM) & SoundCode (follow-up) & ${\sim}180\,\mathrm{ms}$ & yes \\
+LSP completions (rust-analyzer) & SoundCode (follow-up, \S\ref{sec:extended})
   & ${\sim}50$--$300\,\mathrm{ms}$ & yes \\
 Whole-crate borrow / trait analysis & --- (unevaluated)
   & ${\sim}500\,\mathrm{ms}$--several\,s & strongly yes \\
@@ -345,10 +349,11 @@ verifier blesses end-to-end, related to LATS
 \citep{zhou2024lats}. (c) The \emph{oscillation-detection} heuristic
 from week 5 of this project, in which $N$ consecutive rollbacks to
 within an offset window of each other trigger escalation to a
-coarser target (halve the buffer, or restart from the prompt). We
-saw a concrete case in our experiments where the model emitted
-66 syntactically-valid repetition statements before timing out at the
-60\,s budget; an oscillation detector would have caught this in tens
+coarser target (halve the buffer, or restart from the prompt). An
+earlier pilot of this system produced a concrete case in which the
+model emitted
+66 syntactically-valid repetition statements before exhausting its
+wall budget; an oscillation detector would have caught this in tens
 of milliseconds (see \S\ref{sec:conclusion}).
 
 \subsection{Implementation}\label{sec:impl}

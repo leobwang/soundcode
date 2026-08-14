@@ -73,25 +73,27 @@ Rust diagnostics remains the obvious next experiment.
 
 \paragraph{Future work.}
 Five extensions are immediate.
-(1) \emph{Oscillation-detection rollback.} On HumanEval-140 (\code{fix\_spaces}) under our
-\textsf{SyncCargo} arm, the model hit the 60\,s problem budget after
+(1) \emph{Oscillation-detection rollback.} In an earlier pilot of
+this system, on HumanEval-140 (\code{fix\_spaces}) the model hit
+the per-problem wall budget after
 emitting $66$ syntactically-valid repetition statements that all
 re-introduced the same compile error in the same place; each one was
 individually cleared by the boundary detector and re-rejected by the
-verifier. A policy that detects ``$N$ consecutive rollbacks landing
+verifier. (No arm in the experiments reported here reproduces the
+pathology --- the corrected runner's arms have zero timeouts ---
+but nothing in the design rules it out on longer generations.) A
+policy that detects ``$N$ consecutive rollbacks landing
 within an offset window of each other'' and escalates to a coarser
 target (halve the buffer; restart from the prompt with a penalty
-mask) would have caught this pathology in tens of milliseconds. The
-case is concrete evidence that the next paper-sized contribution on
-this architecture is a \emph{penalty / oscillation} mechanism
-layered on top of the rollback policy. (2) \emph{Faithful SemGuard
+mask) would catch this pathology in tens of milliseconds.
+(2) \emph{Faithful SemGuard
 comparison.} SemGuard is the strongest learned-verifier baseline;
 adapting it from Python/Java to Rust requires retraining the 1.3B
-classifier on a curated Rust diff corpus, work currently in
-progress. (3) \emph{Larger benchmarks.} MBPP-rs and LiveCodeBench
+classifier on a curated Rust diff corpus.
+(3) \emph{Larger benchmarks.} LiveCodeBench
 \citep{jain2024livecodebench} would extend the evaluation from
-single-function HumanEval to multi-function and contamination-free
-problems. (4) \emph{Beam-search and DFS rollback policies.} Our
+single-function problems to multi-function and contamination-free
+ones. (4) \emph{Beam-search and DFS rollback policies.} Our
 unifying $\pi$ abstraction admits multi-branch policies that we
 have not evaluated; the natural reference is
 LATS \citep{zhou2024lats}. (5) \emph{Composition with cheap
