@@ -3,16 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SoundCode — LSP-supervised LLM code generation</title>
+<title>SoundCode — async verifier-supervised LLM code generation</title>
 <link rel="stylesheet" href="/static/style.css?v=20260517-rhombus">
 </head>
 <body>
 
 <header id="blog-header">
   <h1 class="blog-title">SoundCode</h1>
-  <div class="blog-subtitle">LSP-supervised LLM code generation</div>
+  <div class="blog-subtitle">Asynchronous verifier-supervised LLM code generation</div>
   <div class="blog-meta">
-    Leo Wang · UChicago CMSC&nbsp;25750 · week&nbsp;5 ·
+    Leo Wang · UChicago CMSC&nbsp;25750 · 2026 ·
+    <a href="https://github.com/leobwang/soundcode">paper + code</a> ·
     <a href="https://soundcode-demo.psixyzt.com">soundcode-demo.psixyzt.com</a>
   </div>
 </header>
@@ -22,11 +23,18 @@
     LLMs don't understand the logic behind the code they write. A
     <em>judge</em> with knowledge of the programming language can help LLMs
     generate correct code. We introduce <b>SoundCode</b>, an orchestration
-    framework that uses Language Server Protocol (LSP) tooling to inspect
-    the code in real time, in parallel, at structural checkpoints while the
-    LLM generates. If the code passes the check, the judge stays out of the
-    way; if an error is found, the judge strikes down the code segment back
-    to the last checkpoint and forces a restart from there.
+    framework that runs a real verifier — the compiler toolchain
+    (<code>cargo check</code>, <code>g++</code>, <code>javac</code>) or,
+    optionally, a language server — in parallel with generation, checking
+    the code at structural checkpoints while the LLM streams. If the code
+    passes the check, the judge stays out of the way; if an error is found,
+    the judge strikes the code back to the last checkpoint and restarts
+    from there. Because the verifier runs <em>asynchronously</em>, off the
+    decoding critical path, verification is nearly free: on Rust it adds
+    ~1% wall-time over unverified decoding, and it is 1.5&ndash;2.2&times;
+    faster than the blocking-verifier designs of prior work at the same
+    accuracy (details and replicated measurements in the
+    <a href="https://github.com/leobwang/soundcode">paper</a>).
   </p>
 </section>
 
@@ -226,7 +234,9 @@
   <p>
     Three modules call each other in a short loop. <b>LlmServer</b>
     produces tokens; <b>Code</b> appends each one and decides at every
-    boundary whether to ask <b>LSP</b> to check; on a <code>BLOCKING</code>
+    boundary whether to ask the <b>verifier</b> (<code>cargo check</code>,
+    <code>g++</code>, <code>javac</code> — or rust-analyzer over LSP) to
+    check; on a <code>BLOCKING</code>
     verdict the rollback path resets both <b>Code</b> and
     <b>LlmServer</b> to the last surviving checkpoint and the loop
     replays. The animation below walks through one full cycle —
@@ -251,10 +261,10 @@
         <rect x="400" y="40" width="200" height="90" rx="12"/>
         <text x="500" y="92">Code</text>
       </g>
-      <!-- LSP block -->
+      <!-- Verifier block (id kept for the animation bindings) -->
       <g id="anim-lsp" class="anim-mod">
         <rect x="720" y="40" width="200" height="90" rx="12"/>
-        <text x="820" y="92">LSP</text>
+        <text x="820" y="92">Verifier</text>
       </g>
 
       <!-- ── Tower (Code buffer growing) ── -->
